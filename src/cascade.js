@@ -277,21 +277,26 @@ function layerKeys(layers) {
 }
 const byLayerThenSpecificity = (a, b) => b.layer - a.layer || b.specificity - a.specificity || b.order - a.order;
 
+// (an implicit scope's owner: the document element, whichever it is now)
+const DOCUMENT_ELEMENT = {};
 // A @scope rule's scope: { start, end (compiled selector lists, or null),
 // owner (with no start: the parent of the sheet's element) }; null when a
 // selector does not compile.
 // outer: the enclosing @scope's, or null (a nested scope's roots and
 // elements are in it too).
-function scopeOf(rule, ss, outer) {
+function scopeOf(rule, ss, outer, root) {
   const { start, end } = rule[S];
   try {
     const owner = ss.ownerNode?.[S].parent ?? null;
+    // (a constructed sheet: the root element when the document adopts it,
+    // none in a shadow tree; black box, 31.0.1)
+    const constructedOwner = ss.constructed && root === null ? DOCUMENT_ELEMENT : null;
     return {
       // (& in a prelude is :scope: the enclosing scope's root for a start,
       // this scope's for an end)
       start: start === null ? null : compileRuleSelector(scopeTokens(start).text),
       end: end === null ? null : compileRuleSelector(scopeTokens(end).text),
-      owner: owner !== null && owner[S].type === ELEMENT_NODE ? owner : null,
+      owner: owner !== null && owner[S].type === ELEMENT_NODE ? owner : constructedOwner,
       outer,
     };
   } catch {
@@ -413,7 +418,9 @@ function scopeHas(scope, root, el, memo) {
   return false;
 }
 const startMatches = (scope, root, ctx) =>
-  scope.start === null ? root === scope.owner : scope.start.some((s) => s.match(root, ctx));
+  scope.start === null
+    ? root === scope.owner || (scope.owner === DOCUMENT_ELEMENT && root[S].parent?.[S].type === DOCUMENT_NODE)
+    : scope.start.some((s) => s.match(root, ctx));
 function outerHas(scope, root, el, memo) {
   let byScope = memo.get(scope);
   if (byScope === undefined) memo.set(scope, (byScope = new Map()));
@@ -986,7 +993,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
           outerScope = scope;
         if (proto === ss.protos.CSSLayerBlockRule) layer = layerNamed(layers, layer, rule[S].name);
         else if (proto === ss.protos.CSSScopeRule) {
-          scope = scopeOf(rule, ss, outerScope);
+          scope = scopeOf(rule, ss, outerScope, root);
           if (scope === null) {
             scope = outerScope;
             continue;
@@ -1116,7 +1123,11 @@ function sheetIndex(holder, ds, root, doc) {
     cached.cssomRev === cssomChanges.rev
   )
     return cached.index;
-  const sheets = (root === null ? documentStyleSheets(doc) : shadowStyleSheets(root))[S].items();
+  const own = (root === null ? documentStyleSheets(doc) : shadowStyleSheets(root))[S].items();
+  // (jsdom 31: the tree's adopted sheets after its <style> sheets, cssom.js
+  // adoptedStyleSheets)
+  const adopted = holder.adopted?.items;
+  const sheets = adopted === undefined || adopted.length === 0 ? own : own.concat(adopted);
   const reuse =
     cached && cached.cssomRev === cssomChanges.rev && !cached.index.readsScheme && sameSheets(cached.sheets, sheets);
   const lists = reuse ? cached.lists : [];

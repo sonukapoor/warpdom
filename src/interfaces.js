@@ -58,7 +58,14 @@ import {
 } from './event-handlers.js';
 import { CUSTOM_ELEMENT_INTERFACES, ATTACH_INTERNALS_MEMBERS, BRAILLE_MEMBERS, lookUp } from './custom-elements.js';
 import { RANGE_INTERFACES, newRange, getSelection, splitText, normalize } from './ranges.js';
-import { CSSOM_INTERFACES, STYLE_ELEMENT_MEMBERS, documentStyleSheets, shadowStyleSheets } from './cssom.js';
+import {
+  CSSOM_INTERFACES,
+  STYLE_ELEMENT_MEMBERS,
+  documentStyleSheets,
+  shadowStyleSheets,
+  adoptedStyleSheets,
+  setAdoptedStyleSheets,
+} from './cssom.js';
 import { FOCUS_MEMBERS, DOCUMENT_FOCUS_MEMBERS } from './focus.js';
 import { FORM_INTERFACES, FORM_MEMBERS, clickMember, labelsMember, cloneFormState } from './forms.js';
 import {
@@ -1019,6 +1026,15 @@ export const INTERFACES = [
           state(this);
           return documentStyleSheets(this);
         },
+        // (jsdom 31: cssom.js adoptedStyleSheets)
+        get adoptedStyleSheets() {
+          state(this);
+          return adoptedStyleSheets(this, 'Document');
+        },
+        set adoptedStyleSheets(sheets) {
+          state(this);
+          setAdoptedStyleSheets(this, 'Document', sheets);
+        },
         createRange() {
           const s = state(this);
           return newRange(s.window, this, 0);
@@ -1303,6 +1319,9 @@ export const INTERFACES = [
         },
       },
     ),
+    compat(proto, compat) {
+      if (!compat.adoptedSheets) delete proto.adoptedStyleSheets;
+    },
   },
   { name: 'XMLDocument', parent: 'Document', members: {} },
   {
@@ -1439,11 +1458,21 @@ export const INTERFACES = [
           shadowState(this);
           return shadowStyleSheets(this);
         },
+        // (jsdom 31: cssom.js adoptedStyleSheets)
+        get adoptedStyleSheets() {
+          shadowState(this);
+          return adoptedStyleSheets(this, 'ShadowRoot');
+        },
+        set adoptedStyleSheets(sheets) {
+          shadowState(this);
+          setAdoptedStyleSheets(this, 'ShadowRoot', sheets);
+        },
       },
       { onslotchange: GLOBAL_HANDLER_MEMBERS.onslotchange },
     ),
     compat(proto, compat) {
       if (!compat.treeScopedSheets) delete proto.styleSheets;
+      if (!compat.adoptedSheets) delete proto.adoptedStyleSheets;
     },
   },
   {

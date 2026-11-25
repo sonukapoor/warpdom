@@ -8678,3 +8678,56 @@ selector(:is(::slotted(i))) is true in warpdom, false in jsdom 31; jsdom
 30's CSS.supports() rejects :host, :host() and ::slotted(), warpdom's
 jsdom 30 profile takes them.
 Next: S3 (adoptedStyleSheets), then F.
+
+## 2026-11-24: jsdom 31, shadow scoping S3: adoptedStyleSheets (branch feat/269-jsdom31-adopted, #269)
+
+jsdom 31 (black box, 31.0.1) has Document and ShadowRoot
+adoptedStyleSheets (accessors on each prototype, after styleSheets);
+jsdom 30 has neither. In the jsdom 31 profile (compat.adoptedSheets):
+- The list is a WebIDL observable array: an Array behind a proxy, the
+  same object for the node's life (assigning copies into it). An index
+  up to the length takes a constructed sheet made by the node's
+  document's window (TypeError for a value that is no sheet,
+  NotAllowedError "Only constructed stylesheets from the same document
+  can be adopted." for a <style> sheet, another window's, or any sheet
+  in a document without a window, a template's or createHTMLDocument's);
+  past the length, a longer length or deleting an index but the last
+  is refused (TypeError in strict code). The setter takes an iterable
+  ("tmp is not iterable" for an object without one, jsdom's message):
+  every value is checked for its type first, then each is set in turn,
+  so a sheet that cannot be adopted leaves the ones before it.
+  Duplicates are kept. (cssom.js adoptedStyleSheets,
+  setAdoptedStyleSheets; a constructed sheet keeps its constructorDoc.)
+- The cascade reads a tree's adopted sheets after its <style> sheets
+  (cascade.js sheetIndex): later in order, their layers after the
+  document's (the layer order runs on across the sheets), their media
+  and disabled flag as any sheet's; a shadow root's in its tree, its
+  :host and ::slotted() rules too (S2); the document's not in shadow
+  trees. Each change to a list bumps cssomChanges.rev, which every
+  index compares; changes to the sheets themselves already did.
+- @scope with no prelude in a constructed sheet: the document element
+  when the document adopts it, nothing in a shadow tree (an owner of
+  its own, DOCUMENT_ELEMENT, matched against whichever element is the
+  document element when the index is read).
+- A host moved to another document (adoptNode, or append into it):
+  its shadow root's list empties, the same array (internal.js
+  adoptTree); moved in and out of its own document, it stays.
+- Not modeled (warpdom has the one realm, the test's, as for its other
+  arrays): jsdom's array is its window realm's, so in a script-running
+  jsdom the test's `instanceof Array` is false; warpdom's is true.
+  Cloning a host does not clone its shadow root in either.
+Speed (node 22.17.1, 5 or 6 interleaved runs, medians): bench-cs.mjs,
+jsdom 30 profile 94.5 ms on main and 94.5 here, jsdom 31 213.0 and
+212.5; bench-sh.mjs (shadow trees) 192.0 and 184.1; bench/load.js from
+the same location (copies of both src trees with one node_modules): cold
+load 30.9 ms and 31.0, a new window 0.213 and 0.211 ms. (Run from the
+checkout and the scratchpad worktree, the cold load differed by 1 ms,
+main faster, for the location alone.)
+Next: F (CSSOM leftovers), then NEWEST_MODELED_JSDOM to 31. Found for
+F: replace() and replaceSync() messages on a sheet that is not
+constructed (jsdom 30: "Cannot call replaceSync on non-constructed
+CSSStyleSheet.", jsdom 31: "Cannot replace rules in a stylesheet that
+was not constructed."; warpdom's "Can't call replaceSync on
+non-constructed CSSStyleSheets."), insertRule('@import ...') on a
+constructed sheet (SyntaxError in both), and replace()'s pending state
+(replaceSync and insertRule throw NotAllowedError until it settles).

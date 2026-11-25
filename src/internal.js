@@ -784,6 +784,11 @@ function adoptTree(node, oldDoc, doc) {
       // (a document with shadow roots: cascade.js ruleIndex looks up each
       // element's tree)
       doc[S].shadowHosts = true;
+      // (jsdom 31: in another document, its adopted sheets are dropped,
+      // cssom.js adoptedStyleSheets; the cascade reads the root's index
+      // again there)
+      const adopted = s.shadowRoot[S].adopted;
+      if (adopted !== undefined && oldDoc !== doc) adopted.items.length = 0;
       adoptTree(s.shadowRoot, oldDoc, doc);
     }
   }

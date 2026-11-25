@@ -12,6 +12,7 @@ import {
   cssomChanges,
   ruleListsChanged,
   ELEMENT_NODE,
+  DOCUMENT_NODE,
   TEXT_NODE,
   HTML_NS,
   nextInTree,
@@ -1314,6 +1315,9 @@ function newSheet(protos, data) {
     media: null,
     rules: [],
     constructed: false,
+    // (a constructed sheet's: the document of the window that made it,
+    // the only one that can adopt it)
+    constructorDoc: null,
     ...data,
   };
   if (legacyRules(protos)) sheet.parentStyleSheet = sheet[S].parentSheet;
@@ -1529,6 +1533,104 @@ export function shadowStyleSheets(root) {
   }
   return rs.styleSheetList;
 }
+
+// adoptedStyleSheets (jsdom 31, black box 31.0.1; CSSOM, WebIDL observable
+// arrays): a Document's or ShadowRoot's list of constructed sheets, which
+// its tree's rules read after its <style> sheets (cascade.js sheetIndex).
+// The list is an array behind a proxy, the same one for the node's life:
+// an index up to the length takes a constructed sheet of the node's
+// document (made by its window), the length only shrinks, only the last
+// index can be deleted. A shadow root's empties when its host moves to
+// another document (internal.js adoptTree). The cascade reads the array
+// (items) itself.
+export function adoptedStyleSheets(node, iface) {
+  const s = node[S];
+  return (s.adopted ??= newAdopted(node, iface)).array;
+}
+// The setter: an iterable of sheets (all checked first), then each set in
+// turn, so that a sheet that cannot be adopted leaves the ones before it.
+export function setAdoptedStyleSheets(node, iface, value) {
+  const failed = `Failed to set the 'adoptedStyleSheets' property on '${iface}': `;
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function'))
+    throw new TypeError(`${failed}The provided value is not an iterable object.`);
+  // (jsdom's message, its conversion's for...of)
+  if (typeof value[Symbol.iterator] !== 'function') throw new TypeError('tmp is not iterable');
+  const list = [];
+  for (const sheet of value) {
+    if (!isSheet(sheet)) throw new TypeError(`${failed}The provided value's element is not of type 'CSSStyleSheet'.`);
+    list.push(sheet);
+  }
+  const s = node[S];
+  const { items } = (s.adopted ??= newAdopted(node, iface));
+  items.length = 0;
+  cssomChanges.rev++;
+  for (let i = 0; i < list.length; i++) setAdopted(node, iface, items, i, list[i]);
+}
+function newAdopted(node, iface) {
+  const items = [];
+  const array = new Proxy(items, {
+    set(target, key, value) {
+      const i = arrayIndex(key);
+      if (i >= 0) return setAdopted(node, iface, items, i, value);
+      if (key === 'length') return setAdoptedLength(items, value);
+      return Reflect.set(target, key, value);
+    },
+    defineProperty(target, key, descriptor) {
+      const i = arrayIndex(key);
+      if (i >= 0) {
+        if (!('value' in descriptor) || descriptor.configurable === false || descriptor.enumerable === false)
+          return false;
+        if (descriptor.writable === false) return false;
+        return setAdopted(node, iface, items, i, descriptor.value);
+      }
+      if (key === 'length') {
+        if ('get' in descriptor || 'set' in descriptor) return false;
+        return 'value' in descriptor ? setAdoptedLength(items, descriptor.value) : true;
+      }
+      return Reflect.defineProperty(target, key, descriptor);
+    },
+    deleteProperty(target, key) {
+      const i = arrayIndex(key);
+      if (i < 0) return Reflect.deleteProperty(target, key);
+      if (i !== items.length - 1) return false;
+      items.length = i;
+      cssomChanges.rev++;
+      return true;
+    },
+  });
+  return { items, array };
+}
+// (a property key's array index, or -1)
+function arrayIndex(key) {
+  if (typeof key !== 'string' || !/^(?:0|[1-9][0-9]*)$/.test(key)) return -1;
+  const i = Number(key);
+  return i < 4294967295 ? i : -1;
+}
+function setAdopted(node, iface, items, i, sheet) {
+  if (i > items.length) return false;
+  if (!isSheet(sheet))
+    throw new TypeError(
+      `Failed to modify the 'adoptedStyleSheets' observable array on '${iface}': The provided value is not of type 'CSSStyleSheet'.`,
+    );
+  const doc = node[S].type === DOCUMENT_NODE ? node : node[S].doc;
+  if (!sheet[S].constructed || sheet[S].constructorDoc !== doc)
+    throw domError('Only constructed stylesheets from the same document can be adopted.', 'NotAllowedError');
+  items[i] = sheet;
+  cssomChanges.rev++;
+  return true;
+}
+function setAdoptedLength(items, value) {
+  const length = Number(value) >>> 0;
+  if (length !== Number(value)) throw new RangeError('Invalid array length');
+  if (length > items.length) return false;
+  if (length < items.length) {
+    items.length = length;
+    cssomChanges.rev++;
+  }
+  return true;
+}
+// (a style sheet of any window: its state has the constructed flag)
+const isSheet = (value) => value !== null && typeof value === 'object' && typeof value[S]?.constructed === 'boolean';
 
 // A sheet's owner node, after checking that its <style> element still has
 // it (removing the element or changing its text drops the sheet).
@@ -2332,6 +2434,7 @@ export const CSSOM_INTERFACES = [
       self[S] = newSheet(protos, {
         baseURL,
         constructed: true,
+        constructorDoc: w.document,
         disabled: !!options?.disabled,
         media: mediaList(protos, media?.[S]?.list ? media.mediaText : (media ?? '')),
       })[S];
