@@ -8996,5 +8996,14 @@ work to every insertion, and clearing it when the registry saw the root
 connected made the result depend on whether a style was read in between.
 A fresh jsdom window never sees the last file's nodes, so this case has
 no jsdom behavior to match.)
+Round 6 (Copilot's closer look on 180580d, probed): escaped units are
+read before matching, in calculations too (calc(2\65 m + 1px) is 21px
+at 10px, calc(90d\65 g) 90deg); a <string> the end closes ("abc) is
+one, a newline not escaped makes none. Found and left for F3 (regular
+properties too): calc() takes + or - without whitespace before it
+(calc(2px+ 1px): jsdom 31 refuses it, warpdom has 3px, on width as well,
+so calc(2p\78 + 1px), whose escape takes the space, is accepted too);
+image-set() computes its strings as url() and its x as dppx in jsdom 31
+(image-set(url("a.png") 1dppx)), warpdom keeps them as written.
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.

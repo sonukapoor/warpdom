@@ -869,3 +869,32 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'review round 6: escaped units in calculations; strings the end closes and newlines break (#345 review)',
+  (w) => {
+    const get = tree(w);
+    const out = [];
+    for (const [syntax, initial] of [
+      ['<angle>', 'calc(90d\\65 g)'],
+      ['<length>', 'calc(2\\65 m + 1px)'],
+      ['<length>', 'calc(2p\\78 0 + 1px)'],
+      ['<string>', '"abc'],
+      ['<string>', '"a\nb"'],
+      ['<string>', '"a\\\nb"'],
+      ['<string>', "'a'"],
+    ]) {
+      const name = `--n${out.length}`;
+      out.push(
+        attempt(() => w.CSS.registerProperty({ name, syntax, inherits: false, initialValue: initial })),
+        get('p', name),
+      );
+    }
+    w.CSS.registerProperty({ name: '--l', syntax: '<length>', inherits: false, initialValue: '0px' });
+    w.CSS.registerProperty({ name: '--g', syntax: '<angle>', inherits: false, initialValue: '0deg' });
+    sheet(w, '#p { font-size: 10px; --l: calc(2\\65 m + 1px); --g: calc(90d\\65 g + 1deg) }');
+    out.push(get('p', '--l'), get('p', '--g'));
+    return out;
+  },
+  { jsdom: 31 },
+);

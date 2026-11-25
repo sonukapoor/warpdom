@@ -137,6 +137,15 @@ export function initialText31(text, keepComments) {
   }
   return out;
 }
+// Whether a string token has a newline not escaped (a bad string).
+function brokenString(token) {
+  for (let i = 1; i < token.length; i++) {
+    const c = token[i];
+    if (c === '\\') i++;
+    else if (c === '\n' || c === '\r' || c === '\f') return true;
+  }
+  return false;
+}
 // A string token's value: its escapes read, without its quotes.
 function stringValue(token) {
   const quote = token[0];
@@ -160,7 +169,13 @@ function stringValue(token) {
 export function matchValue31(syntax, text, ctx) {
   // (the tokens' positions are in the text without its comments)
   if (text.includes('/*')) text = withoutComments(text);
-  const list = tokenizeValue(text);
+  let list = tokenizeValue(text);
+  // (escaped units read, in calculations too: calc(2\65 m + 1px); #345
+  // review)
+  if (list !== null && text.includes('\\')) {
+    const read = unitsRead(text, list);
+    if (read !== text) list = tokenizeValue((text = read));
+  }
   if (list === null || list.length === 0) return null;
   // (numbers alone are numbers first: 0 for <length> | <number> is 0)
   const numbers = list.every((tok) => tok.t === 'number');
@@ -172,6 +187,27 @@ export function matchValue31(syntax, text, ctx) {
     }
   }
   return null;
+}
+// The text with each dimension's escaped unit read (2e\6d is 2em).
+function unitsRead(text, list) {
+  const edits = [];
+  const walk = (tokens) => {
+    for (const tok of tokens) {
+      if (tok.t === 'dimension' && tok.unit.includes('\\')) edits.push(tok);
+      else if (tok.args !== undefined) walk(tok.args);
+      else if (tok.items !== undefined) walk(tok.items);
+    }
+  };
+  walk(list);
+  let out = text;
+  for (let i = edits.length - 1; i >= 0; i--) {
+    const tok = edits[i];
+    const unit = unitOf(tok);
+    // (a unit that reads as no name stays escaped: 2\31 x)
+    if (!/^[a-z]+$/.test(unit)) continue;
+    out = `${out.slice(0, tok.e - tok.unit.length)}${unit}${out.slice(tok.e)}`;
+  }
+  return out;
 }
 // The text with each comment outside strings and urls a space (1px /* a */
 // is 1px, 3px/**/4px two lengths; #345 review).
@@ -264,7 +300,9 @@ function component(part, tok, text, ctx) {
     case 'url':
       return tok.t === 'url' ? `url(${cssString(ctx.url(tok.url))})` : null;
     case 'string':
-      return tok.t === 'string' && tok.closed ? cssString(stringValue(source)) : null;
+      // (one the end closes counts, one a newline breaks does not: "abc,
+      // "a\nb"; #345 review)
+      return tok.t === 'string' && !brokenString(source) ? cssString(stringValue(source)) : null;
     case 'custom-ident': {
       if (tok.t !== 'ident') return null;
       // (a keyword escaped is that keyword: \69 nherit; #345 review)
