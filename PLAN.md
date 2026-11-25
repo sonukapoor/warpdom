@@ -8739,6 +8739,11 @@ an accessor defined on the array ran with the raw array as this, so
 its push skipped the checks (the set trap forwards the receiver; test:
 the accessor scenario); the cache keeps the merged list itself, not a
 second copy, when there are adopted sheets (buildIndex never changes it).
+Round 3 (792cbd2, Copilot, previously missed): a setter for an index on
+Array.prototype took setAdopted's write (setAdopted now defines its own
+data property). Not matched on purpose: jsdom 31.0.1 stores a hole
+there and its getComputedStyle then throws; warpdom keeps the sheet
+(a warpdom-only test).
 Next: F (CSSOM leftovers), then NEWEST_MODELED_JSDOM to 31. Found for
 F: replace() and replaceSync() messages on a sheet that is not
 constructed (jsdom 30: "Cannot call replaceSync on non-constructed

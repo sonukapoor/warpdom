@@ -1625,7 +1625,9 @@ function setAdopted(node, iface, items, i, sheet) {
   const doc = node[S].type === DOCUMENT_NODE ? node : node[S].doc;
   if (!sheet[S].constructed || sheet[S].constructorDoc !== doc)
     throw domError('Only constructed stylesheets from the same document can be adopted.', 'NotAllowedError');
-  items[i] = sheet;
+  // (an own data property: a setter for the index on Array.prototype
+  // must not take the write)
+  Object.defineProperty(items, i, { value: sheet, writable: true, enumerable: true, configurable: true });
   cssomChanges.rev++;
   return true;
 }

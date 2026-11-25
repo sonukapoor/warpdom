@@ -2,7 +2,10 @@
 // observable arrays): Document and ShadowRoot keep a list of constructed
 // sheets, which their tree's rules read after its <style> sheets. jsdom 30
 // has none.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 import { parity } from './parity.js';
+import { createWindow } from '../src/node.js';
 
 const attempt = (f) => {
   try {
@@ -434,3 +437,28 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// (warpdom only: with an inherited index setter jsdom 31.0.1 stores a
+// hole, and its getComputedStyle then throws; warpdom keeps the sheet)
+test('jsdom 31 adoptedStyleSheets: an inherited index setter does not intercept the list', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const d = w.document;
+  d.body.innerHTML = '<p>p</p>';
+  const s = sheet(w, 'p { margin-top: 3px }');
+  const array = d.adoptedStyleSheets;
+  const proto = Object.getPrototypeOf(array);
+  let calls = 0;
+  Object.defineProperty(proto, '0', {
+    set() {
+      calls++;
+    },
+    configurable: true,
+  });
+  try {
+    array[0] = s;
+  } finally {
+    delete proto[0];
+  }
+  assert.deepEqual([calls, array.length, array[0] === s], [0, 1, true]);
+  assert.equal(w.getComputedStyle(d.body.firstChild).marginTop, '3px');
+});
