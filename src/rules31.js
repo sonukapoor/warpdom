@@ -294,8 +294,9 @@ function overrideColors(value, color) {
     if (lower === 'currentcolor' || WIDE.has(lower) || lower in DARK_SYSTEM_COLORS_31) return null;
     if (tok.t === 'func' && /^light-dark\(/i.test(tok.v)) return null;
     // (a descriptor substitutes nothing: var() and attr() anywhere in the
-    // color drop it, which a declaration's check would accept; #344 review)
-    if (tok.t === 'func' && /(?:^|[^\w-])(?:var|attr)\(/i.test(tok.v)) return null;
+    // color drop it, escapes read (v\61 r), which a declaration's check
+    // would accept; #344 review)
+    if (tok.t === 'func' && /(?:^|[^\w-])(?:var|attr)\(/i.test(decodeEscapes(tok.v))) return null;
     const written = color(tok.v);
     if (written === null) return null;
     out.push(`${Math.min(index, 2147483647)} ${written}`);

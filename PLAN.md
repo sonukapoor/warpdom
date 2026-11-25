@@ -8857,6 +8857,6 @@ and 27 on keep it, and @media then writes the escape back (@media
 a\;b), so the fix is the prelude scan per version plus media query
 serialization. Probing Copilot's "closer look" note on 76581a8:
 override-colors refuses var() and attr() anywhere in a color (jsdom 31
-drops the descriptor; env() is kept).
+drops the descriptor; env() is kept), escapes read (v\61 r(--x)).
 Next: F2 (@property and registered custom properties), F3 (the smaller
 details), then NEWEST_MODELED_JSDOM to 31.
