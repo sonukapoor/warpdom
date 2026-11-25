@@ -11,23 +11,28 @@
 // - @font-feature-values: font-display (auto, block, swap, fallback,
 //   optional), then the feature blocks in alphabetical order, each a map
 //   of names to integers: @styleset one or more of 0 to 20,
-//   @character-variant two (the first up to 99), the others one. A block
-//   given twice adds to the first; a name given again moves to the end.
+//   @character-variant two (the first up to 99), the others one. The
+//   block is a list of rules and declarations: comments hold no blocks,
+//   and a block counts only with no prelude. In one block the last value
+//   of a name wins, in its place; a later block of the type sets a name
+//   already there where it is. Names are written with their escapes.
 // - @font-palette-values: a dashed name, and font-family (required),
 //   base-palette (light, dark or an integer, at most 2147483647) and
 //   override-colors (integer and color pairs; no currentcolor, system
 //   color or light-dark()), written in alphabetical order.
 // - @view-transition: navigation (auto or none) and types (none, or
-//   identifiers other than the CSS-wide keywords, default and none).
+//   identifiers other than the CSS-wide keywords, default and none),
+//   written with their escapes (\31 a).
 // A descriptor that is !important or does not parse is dropped; the last
 // valid one wins.
-import { parseDeclarationList31 } from './parse31.js';
+import { parseDeclarationList31, serializeName31 } from './parse31.js';
 import { decodeEscapes } from './conditions31.js';
 import { DARK_SYSTEM_COLORS_31 } from './colors.js';
 
 // --- tokens ---------------------------------------------------------------------------
 
-// Values are short: a regex tokenizer, comments read as whitespace.
+// Values are short: a regex tokenizer, comments read as whitespace
+// (CSS whitespace only: U+00A0 is a name character; #344 review).
 // Kinds: ws, ident, string, number (int: no fraction or exponent),
 // comma, hash, func (a function with its arguments, as written), other.
 const ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F])`;
@@ -35,7 +40,7 @@ const NAME_START = String.raw`[A-Za-z_\u0080-￿]`;
 const NAME_CHAR = String.raw`[\w\u0080-￿-]`;
 const IDENT = String.raw`(?:--|-?(?:${NAME_START}|${ESCAPE}))(?:${NAME_CHAR}|${ESCAPE})*`;
 const TOKEN = new RegExp(
-  String.raw`(\s+|\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*')|(${IDENT})(\()?|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${IDENT}|%)?|(,)|(#(?:${NAME_CHAR}|${ESCAPE})+)|([\s\S])`,
+  String.raw`([ \t\n\r\f]+|\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*')|(${IDENT})(\()?|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${IDENT}|%)?|(,)|(#(?:${NAME_CHAR}|${ESCAPE})+)|([\s\S])`,
   'y',
 );
 function tokens(text) {
@@ -188,63 +193,38 @@ function featureValues(block, text) {
 
 // The rule's data from its prelude and block, or null when it is dropped:
 // { families, display, blocks: Map(type -> Map(name -> integers)) }.
+// (the block read with the declaration tokenizer, so comments and strings
+// hold no blocks, and a block counts only with no prelude: #344 review)
 export function fontFeatureValues(prelude, body) {
   const families = familyNames(prelude);
   if (families === null) return null;
   const data = { families, display: null, blocks: new Map() };
-  let declarations = '';
-  let i = 0;
-  while (i < body.length) {
-    const at = body.indexOf('@', i);
-    if (at < 0) {
-      declarations += body.slice(i);
-      break;
-    }
-    declarations += body.slice(i, at);
-    const open = body.indexOf('{', at);
-    const semi = body.indexOf(';', at);
-    if (open < 0 || (semi >= 0 && semi < open)) {
-      i = semi < 0 ? body.length : semi + 1;
-      continue;
-    }
-    const close = blockClose(body, open);
-    const type = decodeEscapes(body.slice(at + 1, open).trim()).toLowerCase();
-    if (FEATURE_BLOCKS.includes(type)) {
-      let map = data.blocks.get(type);
-      for (const decl of parseDeclarationList31(body.slice(open + 1, close))) {
-        if (decl.important || !PLAIN_WORD.test(decl.name)) continue;
-        const values = featureValues(type, decl.value);
-        if (values === null) continue;
-        if (map === undefined) data.blocks.set(type, (map = new Map()));
-        map.delete(decl.name);
-        map.set(decl.name, values);
-      }
-    }
-    i = close + 1;
-  }
-  for (const decl of parseDeclarationList31(declarations)) {
+  const atRules = [];
+  for (const decl of parseDeclarationList31(body, atRules)) {
     if (decl.important || decl.name.toLowerCase() !== 'font-display') continue;
     const list = tokens(decl.value);
     if (list?.length === 1 && list[0].t === 'ident' && FONT_DISPLAY.has(list[0].v.toLowerCase()))
       data.display = list[0].v.toLowerCase();
   }
-  return data;
-}
-// The } that closes the block opened at open (or the end).
-function blockClose(text, open) {
-  let depth = 0;
-  for (let i = open; i < text.length; i++) {
-    const c = text[i];
-    if (c === '"' || c === "'") {
-      i++;
-      while (i < text.length && text[i] !== c && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1;
-    } else if (c === '/' && text[i + 1] === '*') {
-      const end = text.indexOf('*/', i + 2);
-      i = end < 0 ? text.length : end + 1;
-    } else if (c === '{') depth++;
-    else if (c === '}' && --depth === 0) return i;
+  for (const { name, empty, block } of atRules) {
+    const type = name.toLowerCase();
+    if (!empty || !FEATURE_BLOCKS.includes(type)) continue;
+    // (in one block the last value of a name wins, in its place; a later
+    // block of the type sets a name already there where it is)
+    const own = new Map();
+    for (const decl of parseDeclarationList31(block)) {
+      if (decl.important) continue;
+      const values = featureValues(type, decl.value);
+      if (values === null) continue;
+      own.delete(decl.name);
+      own.set(decl.name, values);
+    }
+    if (own.size === 0) continue;
+    const map = data.blocks.get(type);
+    if (map === undefined) data.blocks.set(type, own);
+    else for (const [name, values] of own) map.set(name, values);
   }
-  return text.length;
+  return data;
 }
 export function fontFeatureValuesText(data) {
   const parts = [];
@@ -252,7 +232,7 @@ export function fontFeatureValuesText(data) {
   for (const type of FEATURE_BLOCKS) {
     const map = data.blocks.get(type);
     if (map === undefined || map.size === 0) continue;
-    const entries = [...map].map(([name, values]) => `${name}: ${values.join(' ')};`);
+    const entries = [...map].map(([name, values]) => `${serializeName31(name)}: ${values.join(' ')};`);
     parts.push(`@${type} { ${entries.join(' ')} }`);
   }
   const body = parts.length ? `{ ${parts.join(' ')} }` : '{ }';
@@ -261,8 +241,13 @@ export function fontFeatureValuesText(data) {
 
 // --- @font-palette-values -----------------------------------------------------------
 
-const DASHED = /^--[\w\u0080-\u{10FFFF}-]*$/u;
-export const dashedName = (prelude) => (DASHED.test(prelude) ? prelude : null);
+// A prelude that is one dashed identifier: its name as written back
+// (escapes read, then written where needed: --\70 is --p), or null.
+export function dashedName(prelude) {
+  const list = tokens(prelude);
+  if (list?.length !== 1 || list[0].t !== 'ident' || !list[0].v.startsWith('--')) return null;
+  return serializeName31(list[0].v);
+}
 
 // The rule's data, or null when it is dropped (no valid font-family).
 // color: a color as a jsdom 31 declaration writes it, or null.
@@ -302,7 +287,7 @@ function overrideColors(value, color) {
     const tok = item[2];
     if (index < 0 || (tok.t !== 'ident' && tok.t !== 'hash' && tok.t !== 'func')) return null;
     const lower = tok.t === 'ident' ? tok.v.toLowerCase() : '';
-    if (lower === 'currentcolor' || lower in DARK_SYSTEM_COLORS_31) return null;
+    if (lower === 'currentcolor' || WIDE.has(lower) || lower in DARK_SYSTEM_COLORS_31) return null;
     if (tok.t === 'func' && /^light-dark\(/i.test(tok.v)) return null;
     const written = color(tok.v);
     if (written === null) return null;
@@ -355,6 +340,7 @@ export function viewTransition(prelude, body) {
 export function viewTransitionText(data) {
   const parts = [];
   if (data.navigation) parts.push(`navigation: ${data.navigation};`);
-  if (data.types !== null) parts.push(`types: ${data.types === 'none' ? 'none' : data.types.join(' ')};`);
+  if (data.types !== null)
+    parts.push(`types: ${data.types === 'none' ? 'none' : data.types.map(serializeName31).join(' ')};`);
   return `@view-transition ${parts.length ? `{ ${parts.join(' ')} }` : '{ }'}`;
 }

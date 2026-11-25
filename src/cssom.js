@@ -910,7 +910,7 @@ const NEWER_RULES31 = {
   },
   'font-feature-values'(protos, prelude, body, sheet, parentRule, raw) {
     // (the prelude read with its comments: a/**/b is the family a b)
-    const data = fontFeatureValues(raw.trim().replace(/^@[\w-]+/, ''), body);
+    const data = fontFeatureValues(raw.replace(/^[ \t\n\r\f]*@[\w-]+/, ''), body);
     return data === null ? null : makeRule(protos, 'CSSFontFeatureValuesRule', sheet, parentRule, { data });
   },
   'font-palette-values'(protos, prelude, body, sheet, parentRule) {

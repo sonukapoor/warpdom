@@ -8824,5 +8824,21 @@ style sheet parsing in the jsdom 31 profile (60 rule groups, 400
 parses) 182.7 and 184.4 ms (within noise: an at-rule record keeps the
 prelude slice it already made); bench-cs.mjs jsdom 30 profile 92.6 and
 90.5, jsdom 31 204.9 and 200.5.
+Review (2026-11-25, CodeRabbit and Copilot on 68e0fc1, all six
+reproduced on jsdom 31.0.1 and fixed): the @font-feature-values block
+is read with parse31's tokenizer (parseDeclarationList31 with an
+atRules list), as a list of rules and declarations: comments and
+strings hold no blocks, a feature block counts only with no prelude
+(comments are none), and anything with a {} block before its ; is a
+rule and dropped (foo: 1 { a: 1 } @swash {...} keeps @swash; style
+attributes still run to the ;, as jsdom's). In one block the last value
+of a name wins in its place, a later block sets a name already there
+where it is. Feature names and view-transition types are written with
+their escapes (\31 a), and an escaped feature name is kept; dashed
+names (@position-try, @font-palette-values) are one identifier with
+escapes read (--\70 is --p), written back with escapes; override-colors
+refuses the CSS-wide keywords; only CSS whitespace separates words
+(U+00A0 is a name character). Sheet parsing 180.4 ms before and 181.3
+after (6 interleaved runs, medians; noise).
 Next: F2 (@property and registered custom properties), F3 (the smaller
 details), then NEWEST_MODELED_JSDOM to 31.

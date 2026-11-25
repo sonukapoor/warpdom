@@ -340,7 +340,10 @@ function atRuleEnd(text, k) {
 
 const meaningful = (k) => TYPE[k] !== WS && TYPE[k] !== COMMENT;
 
-export function parseDeclarationList31(text) {
+// atRules (optional): an array that gets each at-rule with a block, as
+// { name (escapes read), empty (no prelude but whitespace and comments),
+// block (the text inside its braces) }.
+export function parseDeclarationList31(text, atRules) {
   tokenize(text);
   const out = [];
   let k = 0;
@@ -352,8 +355,13 @@ export function parseDeclarationList31(text) {
     }
     // (an at-rule ends at a ; or at the } of its block, whichever comes
     // first: @media x { color: red } left: 1px keeps left; #327 review)
-    const end = type === AT ? atRuleEnd(text, k) : untilSemicolon(text, k);
-    if (type === IDENT) {
+    // (with atRules, the text is a list of rules and declarations, so
+    // anything with a {} block before its ; is a rule, dropped unless it
+    // is an at-rule: foo: 1 { a: 1 } @swash {...} keeps @swash; #344 review)
+    const end = type === AT || atRules !== undefined ? atRuleEnd(text, k) : untilSemicolon(text, k);
+    if (atRules !== undefined && (type === AT || (end < count && TYPE[end] === CLOSE))) {
+      if (type === AT) atRule(text, k, end, atRules);
+    } else if (type === IDENT) {
       const decl = declaration(text, k, end, end === count && depth > 0 ? closers() : '');
       if (decl !== null) out.push(decl);
     }
@@ -361,6 +369,18 @@ export function parseDeclarationList31(text) {
     k = end + 1;
   }
   return out;
+}
+
+// The at-rule at k (ending at end) into atRules, when it has a block.
+function atRule(text, k, end, atRules) {
+  let open = k + 1;
+  while (open < end && !(TYPE[open] === OPEN && text.charCodeAt(START[open]) === 123)) open++;
+  // (a { before the end means the end is its } or the end of the text)
+  if (open >= end) return;
+  let empty = true;
+  for (let j = k + 1; j < open && empty; j++) empty = !meaningful(j);
+  const name = decode(text, START[k] + 1, END[k]);
+  atRules.push({ name, empty, block: text.slice(END[open], end < count ? START[end] : text.length) });
 }
 
 function declaration(text, from, to, closing) {

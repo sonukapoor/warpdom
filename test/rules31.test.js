@@ -411,3 +411,55 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: comments, escapes and other rules in the newer rules (#344 review)',
+  (w) => {
+    const out = each(
+      w,
+      [
+        '@font-feature-values A { /* @swash { ghost: 1 } */ }',
+        '@font-feature-values A { /* @styleset { fake: 2 } */ @swash { x: 1 } }',
+        '@font-feature-values A { /* @ignored */ @styleset { x: 1 } }',
+        '@font-feature-values A { @styleset /* c */ { x: 1 } @swash/**/{y:2} }',
+        '@font-feature-values A { font-display: swap /* @swash { a: 1 } */; @swash { b: 2 } }',
+        '@font-feature-values A { @styleset { x: 1; } font-display: "@swash{"; }',
+        '@font-feature-values A { @swash { /* } */ b: 2 } @styleset { c: 3 } }',
+        '@font-feature-values A { @styleset foo { x: 1 } @swash; @sty\\6c eset { y: 2 } }',
+        '@font-feature-values A { @styleset { \\31 a: 1; a\\ b: 2; \\61 c: 3 } }',
+        '@font-feature-values A { @swash { b: 2; a: 1 } @swash { b: 3 } }',
+        '@font-feature-values A { @swash { b: 2 } @swash { a: 1; b: 3 } }',
+        '@font-feature-values A { foo { a: 1 } @styleset { d: 1 } }',
+        '@font-feature-values A { foo: 1 { a: 1 } @styleset { d: 1 } }',
+        '@font-feature-values A { @"x" { c: 3 } @ swash { b: 2 } @styleset { d: 1 } }',
+        '@font-feature-values A { 1 (;) @styleset { d: 1 } }',
+        '@font-feature-values A { font-display: swap { } ; @styleset { d: 1 } }',
+        '@font-feature-values  A { }',
+        '@position-try --\\70 { top: 1px } @position-try --f\\6f o { top: 1px }',
+        '@position-try --a\\ b { top: 1px } @position-try --\\31 { top: 1px }',
+        '@position-try -- { top: 1px } @position-try --a b { top: 1px } @position-try a { top: 1px }',
+        '@font-palette-values --\\70 { font-family: A } @font-palette-values --a\\ b { font-family: A }',
+        '@font-palette-values --p { font-family:  A }',
+        '@font-palette-values --p { font-family: A; override-colors: 0 red; override-colors: 0 inherit }',
+        '@font-palette-values --p { font-family: A; override-colors: 0 red; override-colors: 0 initial }',
+        '@font-palette-values --p { font-family: A; override-colors: 0 red; override-colors: 0 unset, 1 blue }',
+        '@font-palette-values --p { font-family: A; override-colors: 0 red; override-colors: 0 revert-layer }',
+        '@view-transition { types: \\31 a }',
+        '@view-transition { types: a\\ b c }',
+        '@view-transition { types: \\61 b }',
+      ],
+      (r) => r.name ?? r.fontFamily ?? r.types,
+    );
+    const style = w.document.createElement('style');
+    style.textContent = '@font-feature-values A { }';
+    w.document.head.append(style);
+    const rule = style.sheet.cssRules[0];
+    for (const family of [' A', 'A B', 'A　B,  C']) {
+      rule.fontFamily = family;
+      out.push([family, rule.fontFamily, rule.cssText]);
+    }
+    style.remove();
+    return out;
+  },
+  { jsdom: 31 },
+);
