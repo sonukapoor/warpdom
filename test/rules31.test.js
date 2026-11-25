@@ -463,3 +463,24 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: the newer rules read their names and preludes as tokens (#344 review)',
+  (w) =>
+    each(
+      w,
+      [
+        '@font-feature-values/**/A {} @font-feature-values /**/B {}',
+        '@position-try --a/**/b { top: 1px } @font-palette-values --a/**/b { font-family: A }',
+        '@position-try --a  { top: 1px } @font-palette-values --a  { font-family: A }',
+        '@position-try --a\\  { top: 1px } @font-palette-values --a\\  { font-family: A }',
+        '@position-try /**/--a { top: 1px }',
+        '@view-transition   { navigation: auto } @view-transition /**/ { navigation: none }',
+        '@view-transition/**/{ navigation: auto } @VIEW-TRANSITION { navigation: none }',
+        '@starting-style   { a {} } @starting-style /**/ { b {} } @starting-style{c{}}',
+        '@font-feature-values A\\  { } @font-feature-values B  { }',
+      ],
+      (r) => r.name ?? r.fontFamily ?? r.navigation,
+    ),
+  { jsdom: 31 },
+);

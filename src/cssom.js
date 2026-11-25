@@ -42,6 +42,7 @@ import {
   fontPaletteValues,
   fontPaletteValuesText,
   dashedName,
+  emptyPrelude,
   viewTransition,
   viewTransitionText,
 } from './rules31.js';
@@ -890,10 +891,14 @@ function createRule(protos, record, sheet, parentRule) {
     const m = /^(?:([\w-]+)\s+)?(?:url\(\s*(["']?)(.*?)\2\s*\)|(["'])(.*?)\4)$/s.exec(prelude);
     if (!m) return null;
     return makeRule(protos, 'CSSNamespaceRule', sheet, parentRule, { prefix: m[1] ?? '', namespaceURI: m[3] ?? m[5] });
-  } else if (RULES31.has(protos.CSSRule) && body !== null && newerRule31(at)) {
-    return newerRule31(at)(protos, prelude, body, sheet, parentRule, record.raw);
   } else {
-    return null; // @charset and unknown at-rules
+    // (jsdom 31's newer rules: the name and prelude read from the text as
+    // written, where a comment separates tokens: @font-feature-values/**/A
+    // is the family A, --a/**/b two names; #344 review)
+    const m = RULES31.has(protos.CSSRule) && body !== null ? RAW_AT.exec(record.raw) : null;
+    const make = m === null ? null : newerRule31(m[1].toLowerCase());
+    // (else @charset and unknown at-rules)
+    return make === null ? null : make(protos, record.raw.slice(m[0].length), body, sheet, parentRule);
   }
   rule[S].rules = ruleList(protos, body, sheet, rule);
   return rule;
@@ -903,14 +908,14 @@ function createRule(protos, record, sheet, parentRule) {
 // rule, or null when it is dropped.
 const NEWER_RULES31 = {
   'starting-style'(protos, prelude, body, sheet, parentRule) {
-    if (prelude !== '') return null;
+    if (!emptyPrelude(prelude)) return null;
     const rule = makeRule(protos, 'CSSStartingStyleRule', sheet, parentRule, {});
     rule[S].rules = ruleList(protos, body, sheet, rule);
     return rule;
   },
-  'font-feature-values'(protos, prelude, body, sheet, parentRule, raw) {
-    // (the prelude read with its comments: a/**/b is the family a b)
-    const data = fontFeatureValues(raw.replace(/^[ \t\n\r\f]*@[\w-]+/, ''), body);
+  'font-feature-values'(protos, prelude, body, sheet, parentRule) {
+    // (a/**/b is the family a b)
+    const data = fontFeatureValues(prelude, body);
     return data === null ? null : makeRule(protos, 'CSSFontFeatureValuesRule', sheet, parentRule, { data });
   },
   'font-palette-values'(protos, prelude, body, sheet, parentRule) {
@@ -929,6 +934,7 @@ const NEWER_RULES31 = {
     return data === null ? null : makeRule(protos, 'CSSViewTransitionRule', sheet, parentRule, { data, types: null });
   },
 };
+const RAW_AT = /^@([\w-]+)/;
 const newerRule31 = (at) => (Object.hasOwn(NEWER_RULES31, at) ? NEWER_RULES31[at] : null);
 
 // The own length getter and indexed getters of a CSSKeyframesRule in jsdom

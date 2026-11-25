@@ -241,6 +241,10 @@ export function fontFeatureValuesText(data) {
 
 // --- @font-palette-values -----------------------------------------------------------
 
+// A prelude of nothing but whitespace and comments (CSS whitespace:
+// U+00A0 is not).
+export const emptyPrelude = (prelude) => tokens(prelude)?.length === 0;
+
 // A prelude that is one dashed identifier: its name as written back
 // (escapes read, then written where needed: --\70 is --p), or null.
 export function dashedName(prelude) {
@@ -307,7 +311,7 @@ export function fontPaletteValuesText(data) {
 
 // The rule's data, or null when it is dropped (a prelude).
 export function viewTransition(prelude, body) {
-  if (prelude !== '') return null;
+  if (!emptyPrelude(prelude)) return null;
   const data = { navigation: '', types: null };
   for (const decl of parseDeclarationList31(body)) {
     if (decl.important) continue;

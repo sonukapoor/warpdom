@@ -8839,6 +8839,14 @@ names (@position-try, @font-palette-values) are one identifier with
 escapes read (--\70 is --p), written back with escapes; override-colors
 refuses the CSS-wide keywords; only CSS whitespace separates words
 (U+00A0 is a name character). Sheet parsing 180.4 ms before and 181.3
-after (6 interleaved runs, medians; noise).
+after (6 interleaved runs, medians; noise). Copilot's second pass
+(c7703af, a "previously missed" item, reproduced): in the jsdom 31
+profile the newer rules take their name and prelude from the text as
+written (the record's raw), read as tokens, not from parseRules'
+comment-stripped and String#trim'd prelude (shared by every profile, so
+left as it was): @font-feature-values/**/A is the family A,
+--a/**/b is two tokens (dropped), --a followed by U+00A0 or an escaped
+space keeps it, and a U+00A0 prelude is not empty for @view-transition
+and @starting-style.
 Next: F2 (@property and registered custom properties), F3 (the smaller
 details), then NEWEST_MODELED_JSDOM to 31.
