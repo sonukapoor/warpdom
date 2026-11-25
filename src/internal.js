@@ -409,6 +409,13 @@ export function platformGlobal(name) {
 // pruned of roots gone once it doubles (#345 review). Its sheets may be
 // unread yet (styles31).
 export function trackShadowRoot31(ds, root) {
+  // (once each: a host moved back and forth; #345 review)
+  const seen = (ds.shadowRootsSeen31 ??= new WeakSet());
+  if (seen.has(root)) {
+    ds.styles31 = true;
+    return;
+  }
+  seen.add(root);
   const roots = (ds.shadowRoots31 ??= []);
   if (roots.length >= 2 * (ds.shadowRootsKept31 ?? 0) + 16) {
     let live = 0;

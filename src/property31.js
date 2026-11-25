@@ -23,7 +23,7 @@
 import { isLengthUnit, isMathFunction, isValidValue, readEscapes, tokenizeValue } from './css-values.js';
 import { mathType, mathValue, simplifyMath } from './calc31.js';
 import { sixDigits } from './lengths.js';
-import { cssString } from './css.js';
+import { cssString, escapeIdentifier } from './css.js';
 import { hasVarReference } from './var-substitution.js';
 
 // Whether anything may be registered, in any window: an @property rule was
@@ -93,7 +93,9 @@ export function parseSyntax31(text) {
 // 1000px), strings in double quotes; comments dropped (a style sheet's),
 // or kept (registerProperty's); a hash and an unquoted url() as written
 // (#000, url(icons/001.png); #345 review).
-const NAME_RUN = String.raw`(?:[\w\u0080-￿-]|\\[\s\S])`;
+// (an escape: up to six hex digits and a whitespace after them, or one
+// character)
+const NAME_RUN = String.raw`(?:[\w\u0080-￿-]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[\s\S]))`;
 const PIECE = new RegExp(
   String.raw`([ \t\n\r\f]+)|(\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|([uU][rR][lL]\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?)|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${NAME_RUN}*|%)|(#?${NAME_RUN}+)|([\s\S])`,
   'y',
@@ -101,6 +103,12 @@ const PIECE = new RegExp(
 const OPENS = new Set(['(', '[', '{']);
 const CLOSES = new Set([')', ']', '}']);
 const LETTERS = /^[A-Za-z]+$/;
+const unitText = (unit) => {
+  const read = unit.includes('\\') ? readEscapes(unit) : unit;
+  return LETTERS.test(read) ? read.toLowerCase() : unit;
+};
+const identText = (name) =>
+  name[0] === '#' ? `#${escapeIdentifier(readEscapes(name.slice(1)))}` : escapeIdentifier(readEscapes(name));
 export function initialText31(text, keepComments) {
   let out = '';
   let space = false;
@@ -118,7 +126,11 @@ export function initialText31(text, keepComments) {
     else if (m[4] !== undefined)
       piece = `${piece.slice(0, 4)}${piece.slice(4).replace(/\)$/, '').replace(CSS_SPACE, '')})`;
     // (a number, with its unit: 1E1PX is 10px; a1 is a name)
-    else if (m[5] !== undefined) piece = String(Number(m[5])) + (LETTERS.test(m[6]) ? m[6].toLowerCase() : m[6]);
+    // (its unit's escapes read: 2p\78 is 2px; #345 review)
+    else if (m[5] !== undefined) piece = String(Number(m[5])) + unitText(m[6]);
+    // (a name's escapes read and written as an identifier's: \61 bc is
+    // abc, \31 abc stays; #345 review)
+    else if (m[7] !== undefined && piece.includes('\\')) piece = identText(piece);
     if (space && out !== '' && !OPENS.has(out[out.length - 1]) && !CLOSES.has(piece)) out += ' ';
     space = false;
     out += piece;
@@ -172,8 +184,10 @@ function withoutComments(text) {
       for (i++; i < text.length && text[i] !== c && text[i] !== '\n'; i++) if (text[i] === '\\') i++;
     } else if (c === '\\') i++;
     else if ((c === 'u' || c === 'U') && /^url\([ \t\n\r\f]*[^"' \t\n\r\f]/i.test(text.slice(i, i + 64))) {
-      const close = text.indexOf(')', i);
-      if (close === -1) break;
+      // (an escaped ) is in the url: url(a\)/*b.png); #345 review)
+      let close = i + 4;
+      while (close < text.length && text[close] !== ')') close += text[close] === '\\' ? 2 : 1;
+      if (close >= text.length) break;
       i = close;
     } else if (c === '/' && text[i + 1] === '*') {
       const end = text.indexOf('*/', i + 2);
@@ -216,6 +230,8 @@ const DEGREES = { __proto__: null, deg: 1, grad: 0.9, rad: 180 / Math.PI, turn: 
 const SECONDS = { __proto__: null, s: 1, ms: 0.001 };
 const DPPX = { __proto__: null, dppx: 1, x: 1, dpi: 1 / 96, dpcm: 2.54 / 96 };
 const isMath = (tok) => tok.t === 'function' && isMathFunction(tok.name);
+// A dimension's unit, its escapes read (2e\6d is 2em; #345 review).
+const unitOf = (tok) => (tok.unit.includes('\\') ? readEscapes(tok.unit).toLowerCase() : tok.unit);
 
 function component(part, tok, text, ctx) {
   const source = text.slice(tok.s, tok.e);
@@ -250,7 +266,8 @@ function component(part, tok, text, ctx) {
     case 'string':
       return tok.t === 'string' && tok.closed ? cssString(stringValue(source)) : null;
     case 'custom-ident':
-      return tok.t === 'ident' && !RESERVED.has(tok.v) ? readEscapes(source) : null;
+      if (tok.t !== 'ident' || RESERVED.has(tok.v)) return null;
+      return source.includes('\\') ? identText(source) : source;
     case 'ident':
       return tok.t === 'ident' && readEscapes(source) === part.ident ? part.ident : null;
     case 'image':
@@ -267,8 +284,9 @@ function component(part, tok, text, ctx) {
 function length(tok, source, ctx) {
   if (tok.t === 'number') return tok.v === 0 ? '0px' : null;
   if (tok.t === 'dimension') {
-    if (!isLengthUnit(tok.unit)) return null;
-    const px = ctx.length(source);
+    const unit = unitOf(tok);
+    if (!isLengthUnit(unit)) return null;
+    const px = ctx.length(unit === tok.unit ? source : `${tok.v}${unit}`);
     return px === null ? null : `${sixDigits(px)}px`;
   }
   // (a calculation whose type its relative lengths decide: round(1.5em, 1px))
@@ -327,7 +345,7 @@ function single(tok, unit) {
 // An angle, time or resolution in its canonical unit (a 0 alone is none).
 function dimension(tok, units, type, unit) {
   if (tok.t === 'dimension') {
-    const factor = units[tok.unit];
+    const factor = units[unitOf(tok)];
     return factor === undefined ? null : `${sixDigits(tok.v * factor)}${unit}`;
   }
   return isMath(tok) && mathType(tok) === type ? single(tok, unit) : null;
@@ -346,9 +364,10 @@ function transformFunction(tok, text, ctx) {
     const piece = text.slice(arg.s, arg.e);
     let out = piece;
     if (arg.t === 'number') out = sixDigits(arg.v);
-    else if (arg.t === 'dimension' && DEGREES[arg.unit] !== undefined) out = dimension(arg, DEGREES, 'angle', 'deg');
+    else if (arg.t === 'dimension' && DEGREES[unitOf(arg)] !== undefined) out = dimension(arg, DEGREES, 'angle', 'deg');
     else if (arg.t === 'percentage') out = `${sixDigits(arg.v)}%`;
-    else if (isLengthUnit(arg.unit ?? '') || (isMath(arg) && mathType(arg) === 'length')) out = length(arg, piece, ctx);
+    else if ((arg.t === 'dimension' && isLengthUnit(unitOf(arg))) || (isMath(arg) && mathType(arg) === 'length'))
+      out = length(arg, piece, ctx);
     if (out === null) return null;
     args.push(out);
   }
@@ -364,6 +383,15 @@ const usesFontUnits = (text) => {
   for (const m of text.matchAll(FONT_UNIT)) if (FONT_RELATIVE.has(m[1].toLowerCase())) return true;
   return false;
 };
+// Whether tokens have a font relative unit, in a function too (sign(1em),
+// linear-gradient(red 1em, blue)); strings and urls are none (#345 review).
+function fontRelative(list) {
+  for (const tok of list) {
+    if (tok.t === 'dimension' && FONT_RELATIVE.has(unitOf(tok))) return true;
+    if (tok.args !== undefined && fontRelative(tok.args)) return true;
+  }
+  return false;
+}
 // (what matching needs to check a value alone)
 const INDEPENDENT = {
   length: (text) => (usesFontUnits(text) ? null : 0),
@@ -379,12 +407,17 @@ const INDEPENDENT = {
 // #345 review)
 export function independent31(syntax, text) {
   if (hasVarReference(text)) return false;
+  const list = tokenizeValue(text.includes('/*') ? withoutComments(text) : text);
+  if (list !== null && fontRelative(list)) return false;
   return matchValue31(syntax, text, INDEPENDENT) !== null;
 }
 // A universal syntax's initial value: any value but a CSS-wide keyword
 // or one with var().
 export function universalInitial31(text) {
   if (hasVarReference(text)) return false;
-  const trimmed = text.replace(CSS_SPACE, '').toLowerCase();
+  // (a keyword as an identifier: escaped, \69 nherit, or after a comment;
+  // #345 review)
+  const bare = (text.includes('/*') ? withoutComments(text) : text).replace(CSS_SPACE, '');
+  const trimmed = (bare.includes('\\') ? readEscapes(bare) : bare).toLowerCase();
   return !RESERVED.has(trimmed) || trimmed === 'default';
 }

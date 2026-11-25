@@ -5075,7 +5075,8 @@ function registerProperty31(register, count, definition) {
         if (syntax === UNIVERSAL) {
           if (parseValue31(initial, true) === null || !universalInitial31(text))
             throw domError(`Invalid initial value for custom property "${name}" with universal syntax.`, 'SyntaxError');
-        } else if (!independent31(syntax, text))
+        } else if (!independent31(syntax, initial))
+          // (checked as given: 1.0 is no <integer>; #345 review)
           throw domError(
             `The initial value for custom property "${name}" must match its syntax and be computationally independent.`,
             'SyntaxError',

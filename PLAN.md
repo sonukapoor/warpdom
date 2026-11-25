@@ -8964,5 +8964,23 @@ too, color is then invalid and the initial value the color it has
 (black, as jsdom 31); url( "a)b.png" ) with whitespace before the quote
 was read as an unquoted url in initial values (a quoted one is a
 function with a string; jsdom keeps it relative when computed).
+Round 3 (2026-11-25, both bots; 18 of 31 probes differed, all match now
+but one): font-size read before --a (--a: 2em; font-size: var(--a))
+took --a's initial value, as the inner read found the cycle: the outer
+one checks cycles31 again after substituting (one more optional lookup
+on a path that parses a declaration anyway, so no benchmark);
+registerProperty checks the initial value as given (1.0 is no
+<integer>, a retry with 1 registers), a rule's after it is written (1.0
+is 1 there, as jsdom 31); escapes are read in units (2p\78 is 2px, in
+values too), names (\61 bc is abc, \31 abc stays, \72 gb(1, 2, 3) is
+rgb()) and CSS-wide keywords (\69 nherit and /*x*/inherit are refused);
+an escaped ) stays in an unquoted url when comments go; a font relative
+unit in a function (sign(1em), linear-gradient(red 1em, blue),
+translate(1em)) makes an initial value dependent; currentcolor in a
+color function is the element's color (computed as background-color
+computes it); resetWindow clears registerProperty's Map; a shadow root
+is tracked once per document (a WeakSet). Found and left for F3 (regular
+properties too): relative colors (rgb(from blue r g b)) compute to
+color(srgb 0 0 1) in jsdom 31, warpdom keeps the text.
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.

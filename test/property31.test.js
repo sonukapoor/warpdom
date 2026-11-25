@@ -760,3 +760,76 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'review round 3: read order through font-size, values checked as given, escapes, nested font units and currentcolor (#345 review)',
+  (w) => {
+    const get = tree(w);
+    const out = [];
+    // (font-size read first, or --a first: font-size is unset either way)
+    for (const first of ['font-size', '--a']) {
+      const style = sheet(
+        w,
+        `@property --a { syntax: "<length>"; inherits: false; initial-value: 1px; } #p { --a: 2em; font-size: var(--a) }`,
+      );
+      const read = [get('p', first), get('p', first === '--a' ? 'font-size' : '--a')];
+      out.push(first, ...read);
+      style.remove();
+    }
+    out.push(
+      attempt(() => w.CSS.registerProperty({ name: '--i', syntax: '<integer>', inherits: false, initialValue: '1.0' })),
+      attempt(() => w.CSS.registerProperty({ name: '--i', syntax: '<integer>', inherits: false, initialValue: '1' })),
+      get('p', '--i'),
+    );
+    for (const [syntax, initial] of [
+      ['<length>', '2p\\78'],
+      ['<custom-ident>', '\\61 bc'],
+      ['<custom-ident>', '\\31 abc'],
+      ['*', '\\61 bc'],
+      ['*', 'a\\62 c #\\61 bc'],
+      ['*', '\\72 gb(1, 2, 3)'],
+      ['<color>', '\\72 gb(1, 2, 3)'],
+      ['*', '\\69 nherit'],
+      ['*', 'inherit'],
+      ['*', '"inherit"'],
+      ['<url>', 'url(a\\)/*b.png)'],
+      ['<url>', 'url(a.png)/*x*/'],
+      ['<integer>', '1.0'],
+      ['<number>', 'sign(1em)'],
+      ['<image>', 'linear-gradient(red 1em, blue)'],
+      ['<image>', 'linear-gradient(red 1px, blue)'],
+      ['<transform-function>', 'translate(1em)'],
+    ]) {
+      const text = `@property --a { syntax: "${syntax}"; inherits: false; initial-value: ${initial}; }`;
+      out.push(ruleOf(w, text), valuesOf(w, text));
+    }
+    for (const [syntax, initial] of [
+      ['*', '\\69 nherit'],
+      ['*', '/*x*/inherit'],
+      ['*', '\\61 bc'],
+      ['<length>', '2p\\78'],
+      ['<url>', 'url(a\\)/*b.png)'],
+      ['<number>', 'sign(1em)'],
+      ['<image>', 'linear-gradient(red 1em, blue)'],
+    ]) {
+      const name = `--n${out.length}`;
+      out.push(
+        attempt(() => w.CSS.registerProperty({ name, syntax, inherits: false, initialValue: initial })),
+        get('p', name),
+      );
+    }
+    // (escaped units in a value; currentcolor in a color function is the
+    // element's color)
+    w.CSS.registerProperty({ name: '--l', syntax: '<length>', inherits: false, initialValue: '1px' });
+    w.CSS.registerProperty({ name: '--g', syntax: '<angle>', inherits: false, initialValue: '0deg' });
+    w.CSS.registerProperty({ name: '--k', syntax: '<color>', inherits: false, initialValue: 'black' });
+    w.CSS.registerProperty({ name: '--m', syntax: '<color>', inherits: false, initialValue: 'black' });
+    sheet(
+      w,
+      '#p { color: red; font-size: 10px; --l: 2e\\6d; --g: 90d\\65 g } #c { color: blue; --k: light-dark(currentcolor, red); --m: color-mix(in srgb, currentcolor, currentcolor) }',
+    );
+    out.push(get('p', '--l'), get('p', '--g'), get('c', '--k'), get('c', '--m'));
+    return out;
+  },
+  { jsdom: 31 },
+);

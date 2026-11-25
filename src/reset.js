@@ -162,6 +162,9 @@ export function resetWindow(window) {
   ws.listeners = undefined;
   ws.handlers = undefined;
   ws.status = undefined;
+  // (CSS.registerProperty's registrations, the Map the CSS namespace has;
+  // #345 review)
+  ws.registered31?.clear();
   // The next file starts without frames (pending callbacks dropped, the
   // beat's interval cleared).
   stopFrames(window);

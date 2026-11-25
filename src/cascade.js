@@ -3964,7 +3964,9 @@ const MATCH31 = {
   color: (text) => {
     const element = matching31;
     const value = declared31(element, 'color', text);
-    return value === null ? null : computeValue(element, 'color', value, LONGHANDS.color);
+    // (as a color other than color's: currentcolor in it is the element's
+    // color, light-dark(currentcolor, red); #345 review)
+    return value === null ? null : computeValue(element, 'background-color', value, LONGHANDS['background-color']);
   },
   currentColor: () => computedValue(matching31, 'color'),
   image: (text) => {
@@ -4076,7 +4078,9 @@ function substitutedValue(element, name, value, custom) {
     if (cache !== undefined) (cache.cycles31 ??= new Set()).add(name);
     return null;
   }
-  if (text === null) return null;
+  // (found in the cycle by a read of it within this one: font-size read
+  // first; #345 review)
+  if (text === null || cache?.cycles31?.has(name)) return null;
   const window = element[S].doc[S].window;
   const decls = parseDeclarations(`${property}: ${text}`, validationModeOf(window), styleSurfaceOf(window));
   const declared = decls.get(longhand)?.value;
