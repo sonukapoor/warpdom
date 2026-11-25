@@ -95,7 +95,7 @@ export function parseSyntax31(text) {
 // (#000, url(icons/001.png); #345 review).
 const NAME_RUN = String.raw`(?:[\w\u0080-￿-]|\\[\s\S])`;
 const PIECE = new RegExp(
-  String.raw`([ \t\n\r\f]+)|(\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|([uU][rR][lL]\([ \t\n\r\f]*(?!["'])(?:[^)\\]|\\[\s\S])*\)?)|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${NAME_RUN}*|%)|(#?${NAME_RUN}+)|([\s\S])`,
+  String.raw`([ \t\n\r\f]+)|(\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|([uU][rR][lL]\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?)|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${NAME_RUN}*|%)|(#?${NAME_RUN}+)|([\s\S])`,
   'y',
 );
 const OPENS = new Set(['(', '[', '{']);

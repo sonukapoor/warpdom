@@ -3889,9 +3889,9 @@ function registeredValue31(element, name, registration, value) {
   }
   const lower = keyword?.toLowerCase();
   if (lower === 'initial' || (lower !== 'inherit' && !registration.inherits))
-    return initialValue31(element, registration);
+    return initialValue31(element, name, registration);
   const parent = inheritParent(element);
-  return parent === null ? initialValue31(element, registration) : computedValue(parent, name);
+  return parent === null ? initialValue31(element, name, registration) : computedValue(parent, name);
 }
 // A value computed by a syntax, or null. The property is on the stack of
 // those being substituted meanwhile: a property it reads (font-size for
@@ -3910,12 +3910,24 @@ function typedValue31(element, name, registration, text) {
   cyclic.splice(mark, 2);
   return null;
 }
-function initialValue31(element, registration) {
+// (a typed initial value is on the stack too: currentcolor with color:
+// var(--a) makes color invalid, and the initial value is then the color
+// it has; #345 review)
+function initialValue31(element, name, registration) {
   const initial = registration.initial;
   if (initial === null) return '';
   // (an empty value is a space, as a custom property's)
   if (registration.syntax === UNIVERSAL) return initial === '' ? ' ' : initial;
-  return matchRegistered31(element, registration.syntax, initial, registration.base) ?? '';
+  substituting.push(element, name);
+  let computed;
+  try {
+    computed = matchRegistered31(element, registration.syntax, initial, registration.base);
+  } finally {
+    substituting.length -= 2;
+  }
+  const mark = indexOn(cyclic, element, name);
+  if (mark !== -1) cyclic.splice(mark, 2);
+  return computed ?? '';
 }
 // (property31.js matchValue31's context: the element being computed, and
 // the base URL of an initial value, else null)

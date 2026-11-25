@@ -730,3 +730,33 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'a typed initial value read back through another property; quoted urls in initial values (#345 review)',
+  (w) => {
+    const get = tree(w);
+    const d = w.document;
+    const out = [];
+    const style = sheet(
+      w,
+      '@property --r { syntax: "<color>"; inherits: false; initial-value: currentcolor; } #p { color: var(--r) } #c { color: var(--i) }',
+    );
+    w.CSS.registerProperty({ name: '--i', syntax: '<color>', inherits: true, initialValue: 'currentcolor' });
+    out.push(get('p', '--r'), get('p', 'color'), get('c', '--i'), get('c', 'color'));
+    style.remove();
+    for (const text of [
+      '@property --a { syntax: "<url>"; inherits: false; initial-value: url( "a)b.png" ); }',
+      '@property --a { syntax: "*"; inherits: false; initial-value: url( "a)b.png" ); }',
+      '@property --a { syntax: "<url>"; inherits: false; initial-value: url( "c.png" ); }',
+    ])
+      out.push(ruleOf(w, text), valuesOf(w, text));
+    out.push(
+      attempt(() =>
+        w.CSS.registerProperty({ name: '--u', syntax: '<url>', inherits: false, initialValue: 'url( "a)b.png" )' }),
+      ),
+      w.getComputedStyle(d.getElementById('p')).getPropertyValue('--u'),
+    );
+    return out;
+  },
+  { jsdom: 31 },
+);

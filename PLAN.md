@@ -8958,5 +8958,11 @@ document's too: a shadow tree read first skipped a document rule), set
 in internal.js sheetCreated and cleared by the registry. Benchmarks after
 (same setup, 5 runs, medians): 38.4 -> 39.6 ms (0 roots), 74.0 -> 74.2 ms
 (20 roots), a <style> added per read 39.8 -> 39.7 ms.
+Round 2 (Copilot): a typed initial value read back the same way
+(currentcolor, color: var(--a), no --a set) recursed: it is on the stack
+too, color is then invalid and the initial value the color it has
+(black, as jsdom 31); url( "a)b.png" ) with whitespace before the quote
+was read as an unquoted url in initial values (a quoted one is a
+function with a string; jsdom keeps it relative when computed).
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.
