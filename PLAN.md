@@ -8857,6 +8857,11 @@ and 27 on keep it, and @media then writes the escape back (@media
 a\;b), so the fix is the prelude scan per version plus media query
 serialization. Probing Copilot's "closer look" note on 76581a8:
 override-colors refuses var() and attr() anywhere in a color (jsdom 31
-drops the descriptor; env() is kept), escapes read (v\61 r(--x)).
+drops the descriptor; env() is kept), escapes read (v\61 r(--x)). The values' tokenizer (rules31.js
+tokens(), fontFamily's setter included) preprocesses its text (CR, CR
+LF, FF are LF; NUL is U+FFFD) and closes what the end leaves open: an
+open string is a string, a \ at the end is nothing in a string and
+U+FFFD in a name. (jsdom 31 also logs "Could not parse CSS stylesheet"
+for a sheet left open at the end; not modeled.)
 Next: F2 (@property and registered custom properties), F3 (the smaller
 details), then NEWEST_MODELED_JSDOM to 31.

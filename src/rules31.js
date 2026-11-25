@@ -35,15 +35,20 @@ import { DARK_SYSTEM_COLORS_31 } from './colors.js';
 // (CSS whitespace only: U+00A0 is a name character; #344 review).
 // Kinds: ws, ident, string, number (int: no fraction or exponent),
 // comma, hash, func (a function with its arguments, as written), other.
-const ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F])`;
+// The text is preprocessed first (CR, CR LF and FF are LF, NUL is
+// U+FFFD), and the end closes what is open: a string left open is a
+// string, a \ at the end is nothing in a string and U+FFFD in a name
+// (#344 review).
+const ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F]|$)`;
 const NAME_START = String.raw`[A-Za-z_\u0080-￿]`;
 const NAME_CHAR = String.raw`[\w\u0080-￿-]`;
 const IDENT = String.raw`(?:--|-?(?:${NAME_START}|${ESCAPE}))(?:${NAME_CHAR}|${ESCAPE})*`;
 const TOKEN = new RegExp(
-  String.raw`([ \t\n\r\f]+|\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*')|(${IDENT})(\()?|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${IDENT}|%)?|(,)|(#(?:${NAME_CHAR}|${ESCAPE})+)|([\s\S])`,
+  String.raw`([ \t\n\r\f]+|\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S]|\\$)*(?:"|$)|'(?:[^'\\\n]|\\[\s\S]|\\$)*(?:'|$))|(${IDENT})(\()?|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${IDENT}|%)?|(,)|(#(?:${NAME_CHAR}|${ESCAPE})+)|([\s\S])`,
   'y',
 );
 function tokens(text) {
+  if (/[\r\f\0]/.test(text)) text = text.replace(/\r\n?|\f/g, '\n').replace(/\0/g, '\uFFFD');
   const out = [];
   TOKEN.lastIndex = 0;
   while (TOKEN.lastIndex < text.length) {
@@ -63,7 +68,8 @@ function tokens(text) {
       if (depth > 0) return null;
       out.push({ t: 'func', v: text.slice(start, i) });
       TOKEN.lastIndex = i;
-    } else if (m[3] !== undefined) out.push({ t: 'ident', v: decodeEscapes(m[3]) });
+    } else if (m[3] !== undefined)
+      out.push({ t: 'ident', v: decodeEscapes(oddEnd(m[3]) ? `${m[3].slice(0, -1)}\uFFFD` : m[3]) });
     else if (m[5] !== undefined) {
       if (m[6] !== undefined) out.push({ t: 'other' });
       else out.push({ t: 'number', v: m[5], int: !/[.eE]/.test(m[5]) });
@@ -76,7 +82,20 @@ function tokens(text) {
   if (out.length && out[out.length - 1].t === 'ws') out.pop();
   return out;
 }
-const unquote = (s) => decodeEscapes(s.slice(1, -1).replace(/\\\r\n|\\[\n\r\f]/g, ''));
+// A string token's value: without its quotes (the closing one may be
+// missing at the end), escaped newlines and a \ at the end.
+function unquote(s) {
+  let body = s.slice(1);
+  if (body.endsWith(s[0]) && !oddEnd(body.slice(0, -1))) body = body.slice(0, -1);
+  if (oddEnd(body)) body = body.slice(0, -1);
+  return decodeEscapes(body.replace(/\\\n/g, ''));
+}
+// Whether text ends with a \ that escapes nothing.
+function oddEnd(text) {
+  let n = 0;
+  while (n < text.length && text[text.length - 1 - n] === '\\') n++;
+  return n % 2 === 1;
+}
 // A token list split at its commas (null when an item is empty).
 function commaItems(list) {
   const items = [[]];

@@ -494,3 +494,44 @@ parity(
     ),
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: fontFamily preprocesses its text and closes what the end leaves open (#344 review)',
+  (w) => {
+    const style = w.document.createElement('style');
+    style.textContent = '@font-feature-values Z { }';
+    w.document.head.append(style);
+    const rule = style.sheet.cssRules[0];
+    const out = [
+      '"A',
+      "'A",
+      '"A\\',
+      'A\\',
+      '\\',
+      'A, "B',
+      'A\u0000B',
+      '"A\u0000"',
+      'A\u0000',
+      '"a\\\r\nb"',
+      '"a\\\fb"',
+      'A\rB',
+      'A\fB',
+      '"A\r\nB"',
+      '"A\nB"',
+      'A /*',
+      '"A" /*',
+      'A\\\nB',
+      '"\\0"',
+      'A\\110000',
+    ].map((family) => {
+      rule.fontFamily = 'Z';
+      rule.fontFamily = family;
+      return [family, rule.fontFamily, rule.cssText];
+    });
+    style.remove();
+    // (style sheets left open at the end are left out: jsdom 31 also logs
+    // "Could not parse CSS stylesheet" for them, which warpdom does not)
+    return out;
+  },
+  { jsdom: 31 },
+);
