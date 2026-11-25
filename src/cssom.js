@@ -34,6 +34,7 @@ import {
   positionTryBlock,
   declaredColor31,
 } from './css.js';
+import { registrations31 } from './property31.js';
 import {
   familyNames,
   serializeFamilies,
@@ -45,6 +46,8 @@ import {
   emptyPrelude,
   viewTransition,
   viewTransitionText,
+  propertyRule,
+  propertyRuleText,
 } from './rules31.js';
 import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutComments } from './cssom-declaration.js';
 import { liveList, iterate } from './collections.js';
@@ -933,7 +936,15 @@ const NEWER_RULES31 = {
     const data = viewTransition(prelude, body);
     return data === null ? null : makeRule(protos, 'CSSViewTransitionRule', sheet, parentRule, { data, types: null });
   },
+  // (#269 part F2; the cascade reads its registration: cascade.js)
+  property(protos, prelude, body, sheet, parentRule) {
+    const data = propertyRule(prelude, body);
+    if (data === null) return null;
+    registrations31.made = true;
+    return makeRule(protos, 'CSSPropertyRule', sheet, parentRule, { data, names: null });
+  },
 };
+
 // (the whole at-keyword: a name character or an escape after it makes
 // another name, so @font-feature-valuesé and @font-feature-values\41 are
 // unknown rules; #344 review)
@@ -1123,6 +1134,8 @@ function ruleText(rule) {
       return `@position-try ${s.name} ${styleText(s.style)}`;
     case s.protos.CSSViewTransitionRule:
       return viewTransitionText(s.data);
+    case s.protos.CSSPropertyRule:
+      return propertyRuleText(s.data);
     default:
       return '';
   }
@@ -2233,6 +2246,31 @@ export const CSSOM_INTERFACES = [
         const s = state(this);
         const types = s.data.types;
         return (s.types ??= Object.freeze(types === null || types === 'none' ? [] : types.slice()));
+      },
+    },
+  },
+  {
+    name: 'CSSPropertyRule',
+    parent: 'CSSRule',
+    members: {
+      get inherits() {
+        return state(this).data.inherits;
+      },
+      get initialValue() {
+        return state(this).data.initial;
+      },
+      // (a rule for a list of names has none)
+      get name() {
+        const names = state(this).data.names;
+        return names.length === 1 ? names[0] : '';
+      },
+      // (jsdom 31's: the same array each time)
+      get names() {
+        const s = state(this);
+        return (s.names ??= s.data.names.slice());
+      },
+      get syntax() {
+        return state(this).data.syntax.text;
       },
     },
   },

@@ -18,6 +18,7 @@ import {
   textOf,
   contains,
   domError,
+  trackShadowRoot31,
   rootOf,
   nextInTree,
   childArray,
@@ -590,7 +591,12 @@ function attachShadow(element, init) {
   // jsdom 31: the host's children leave the rendered tree until slotted
   // (cascade.js rendered31), so computed styles kept for them are dropped.
   const ds = es.doc[S];
-  if (ds.window?.[S].compat.computed31) ds.treeRev = (ds.treeRev ?? 0) + 1;
+  if (ds.window?.[S].compat.computed31) {
+    ds.treeRev = (ds.treeRev ?? 0) + 1;
+    // (its sheets' @property rules register: cascade.js ruleRegistrations31;
+    // held weakly, a test's shadow roots come and go)
+    trackShadowRoot31(ds, shadow);
+  }
   return shadow;
 }
 

@@ -342,9 +342,16 @@ const meaningful = (k) => TYPE[k] !== WS && TYPE[k] !== COMMENT;
 
 // atRules (optional): an array that gets each at-rule with a block, as
 // { name (escapes read), empty (no prelude but whitespace and comments),
-// block (the text inside its braces) }.
-export function parseDeclarationList31(text, atRules) {
+// block (the text inside its braces) }; each declaration then has its
+// value's text as written too (raw: comments kept, for @property's
+// initial-value; null otherwise).
+// anyValue: a declaration name (lowercase) whose value may have {} blocks
+// (@property's initial-value); another one with a {} block at its top
+// level is a rule.
+let keepRaw = false;
+export function parseDeclarationList31(text, atRules, anyValue) {
   tokenize(text);
+  keepRaw = atRules !== undefined;
   const out = [];
   let k = 0;
   while (k < count) {
@@ -355,13 +362,21 @@ export function parseDeclarationList31(text, atRules) {
     }
     // (an at-rule ends at a ; or at the } of its block, whichever comes
     // first: @media x { color: red } left: 1px keeps left; #327 review)
-    // (with atRules, the text is a list of rules and declarations, so
-    // anything with a {} block before its ; is a rule, dropped unless it
-    // is an at-rule: foo: 1 { a: 1 } @swash {...} keeps @swash; #344 review)
-    const end = type === AT || atRules !== undefined ? atRuleEnd(text, k) : untilSemicolon(text, k);
-    if (atRules !== undefined && (type === AT || (end < count && TYPE[end] === CLOSE))) {
-      if (type === AT) atRule(text, k, end, atRules);
-    } else if (type === IDENT) {
+    // (with atRules, the text is a list of rules and declarations: an
+    // item is a declaration when it reads as one, else a rule, dropped
+    // unless it is an at-rule: foo: 1 { a: 1 } @swash {...} keeps @swash;
+    // #344 review)
+    let end;
+    if (atRules !== undefined) {
+      end = type === IDENT ? blockDeclarationEnd(text, k, anyValue) : -1;
+      if (end === -1) {
+        end = atRuleEnd(text, k);
+        if (type === AT) atRule(text, k, end, atRules);
+        k = end + 1;
+        continue;
+      }
+    } else end = type === AT ? atRuleEnd(text, k) : untilSemicolon(text, k);
+    if (type === IDENT) {
       const decl = declaration(text, k, end, end === count && depth > 0 ? closers() : '');
       if (decl !== null) out.push(decl);
     }
@@ -369,6 +384,34 @@ export function parseDeclarationList31(text, atRules) {
     k = end + 1;
   }
   return out;
+}
+
+// Where the declaration at k in a list of rules and declarations ends (its
+// ;), or -1 when it is none (CSS Syntax 3, consume a declaration, as jsdom
+// 31 reads it: a name, a colon, then a value valid for it; anyValue's
+// takes {} blocks, another's with a {} block at its top level is a rule:
+// foo: 1 { a: 1 } is one; #269 part F2, #345 review). One pass, up to the
+// ; or that block.
+function blockDeclarationEnd(text, k, anyValue) {
+  let colon = k + 1;
+  while (colon < count && !meaningful(colon)) colon++;
+  if (colon >= count || TYPE[colon] !== COLON) return -1;
+  if (anyValue !== undefined && identIs(text, START[k], END[k], anyValue)) return untilSemicolon(text, k);
+  // (the state untilSemicolon leaves: declaration() reads it)
+  depth = 0;
+  for (let j = colon + 1; j < count; j++) {
+    const type = TYPE[j];
+    if (depth === 0) {
+      if (type === SEMI) return j;
+      if (type === OPEN && text.charCodeAt(START[j]) === 123) return -1;
+    }
+    if (type === OPEN || type === FUNCTION) open(opener(text, j));
+    else if (type === CLOSE && depth > 0) {
+      const top = STACK[depth - 1];
+      if ((top === VAR ? 41 : top) === text.charCodeAt(START[j])) depth--;
+    }
+  }
+  return count;
 }
 
 // The at-rule at k (ending at end) into atRules, when it has a block.
@@ -452,7 +495,9 @@ function declaration(text, from, to, closing) {
     if (to === count && !important) value = closedAtEnd(text, last, value, custom || withVar) + closing;
   }
   const empty = custom && value === '';
-  return { name, value: empty ? ' ' : value, important, custom, empty };
+  let raw = null;
+  if (keepRaw) raw = last >= first ? text.slice(START[first], END[last]) : '';
+  return { name, value: empty ? ' ' : value, important, custom, empty, raw };
 }
 
 // A token's text in a value, an identifier's, a hash's or a unit's escapes read when
@@ -501,6 +546,7 @@ export function parseValue31(text, custom = false) {
   tokenize(source);
   const end = untilSemicolon(source, 2);
   if (end < count) return null;
+  keepRaw = false;
   const decl = declaration(source, 0, count, depth > 0 ? closers() : '');
   if (decl === null || decl.important) return null;
   return decl.empty ? '' : decl.value;

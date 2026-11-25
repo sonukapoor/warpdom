@@ -8865,3 +8865,155 @@ U+FFFD in a name. (jsdom 31 also logs "Could not parse CSS stylesheet"
 for a sheet left open at the end; not modeled.)
 Next: F2 (@property and registered custom properties), F3 (the smaller
 details), then NEWEST_MODELED_JSDOM to 31.
+
+## 2026-11-25: jsdom 31, CSS part F2: registered custom properties (branch feat/269-jsdom31-property, #269)
+
+jsdom 31 has @property rules (CSSPropertyRule) and CSS.registerProperty,
+and computes a registered custom property by its syntax; jsdom 20 to 30
+have neither (the rule is dropped, the property is a plain custom one).
+Behavior (jsdom 31 profile only; black box, 31.0.1; property31.js, the
+rule in rules31.js, registerProperty in css.js, the cascade in
+cascade.js; test/property31.test.js):
+- CSSPropertyRule (type 0): name, names (jsdom's own: the same array each
+  time), syntax, inherits, initialValue. Its prelude is one dashed name
+  or a comma list of them (name is then '', every name registers). Its
+  block reads as a list of declarations and rules (a declaration whose
+  value is a {} block alone is one: initial-value: {a}; parse31.js
+  blockDeclarationEnd). Each descriptor has a default (syntax *, inherits
+  true, no initial value) and is not required: jsdom keeps the rule and
+  writes the defaults in cssText. syntax and inherits: the last valid
+  one; initial-value: the last one, kept when it matches the syntax and
+  is computationally independent (no em, rem, ex, ch, lh, ... nor var();
+  vw and currentcolor are fine), written token by token (whitespace runs
+  one space, none at a block's ends; comments dropped; numbers as numbers,
+  1E3px is 1000px; strings in double quotes).
+- The syntax: * alone, or components joined by | (written " | "): one of
+  15 data type names (<length>, <color>, ..., <transform-list> without a
+  multiplier), as written, or an identifier but the CSS-wide keywords and
+  default; + or # after each. Invalid in a rule: *.
+- CSS.registerProperty(definition): members read inherits, initialValue,
+  name, syntax; inherits defaults to true, syntax to *; checked in order:
+  the name (starts with -- and has more), new, the syntax, the initial
+  value (none is fine for any syntax, unlike the spec; with * it must be
+  a value but no CSS-wide keyword or var()), each with jsdom's message.
+  It wins over every rule.
+- The cascade: CSS.registerProperty's registrations, else the @property
+  rules of the sheets that apply (conditions hold; @layer too; not in a
+  style rule; the document's <style> and adopted sheets, then each shadow
+  root's, a shadow root's adopted sheets out of the document too); a
+  later rule for a name wins. A registered property inherits or not as
+  registered, has its initial value (computed), and computes its value
+  by the syntax: lengths px (em and the other relative units from the
+  element), percentages, numbers six digits, integers rounded from a
+  calculation, angles deg, times s, resolutions dppx, colors as color
+  computes them (currentcolor the element's color), urls absolute,
+  strings in double quotes, identifiers as written, lists with one space
+  or a comma and space; a value matching none (after var() substitution)
+  is unset. A plain 0 is a <number> first (0 for <length> | <number>).
+  The computed style lists a registered name when it has a value.
+Not modeled: the order between two shadow trees' rules for one name
+(jsdom 31: by when each tree last got a sheet after having none; warpdom:
+by when the shadow roots were attached; 2 of 13 probes differ); the
+differences on regular properties found on the way (computed angles,
+times, transform lengths and bare calc() results, a computed url() made
+absolute) stay for F3.
+Design: the registry is per document, rebuilt when its tree, style text
+or CSSOM changes, from a walk of the sheets' rules (no selectors
+compiled; a sheet without an @property rule is skipped until the CSSOM
+changes). Nothing is looked up until a rule is made or registerProperty
+is called (property31.js registrations31), or a shadow tree has a <style>
+whose sheet is not made yet (made when read: internal.js sheetCreated
+sets shadowStyles31). Shadow roots are listed per document when attached,
+held through WeakRefs. registerProperty bumps the CSSOM counter, so every
+index and cached value is made again.
+Benchmarks (Node 22.17.1, interleaved against main 3db43a9, medians):
+custom property reads after a tree change, jsdom 31 profile, 4000 x 20
+reads: 121.6 -> 123.9 ms (noise; 7.5% slower before the registry gate
+moved inline, profiled: three symbol lookups per read); with 20 shadow
+roots, 1000 x 20: 75.4 -> 76.5 ms (11% slower before the gate); sheet
+parsing (bench-parse, 400 sheets): 181.6 -> 182.5 ms. Cold load 30.7 ->
+31.5 ms (+0.8 ms, 5 runs each order): the new module and the registry
+code (src/ is 34 KB larger); kept, as @property is jsdom 31 behavior
+tests can observe and a synchronous core cannot load it later.
+Review (#345, round 1; each probed against 31.0.1 first): a registered
+value read back through another property (--a: 2em; font-size: var(--a);
+currentcolor with color: var(--a); 1lh with line-height) overflowed the
+stack: both are in a cycle now, the registered one unset and the other
+property invalid for the element's values (cascade.js typedValue31,
+cycles31); length calculations jsdom resolves (round(1.5px, 1px), abs(),
+round(1.5em, 1px) after its em) go through calc31's simplification;
+<integer> rounds the calculation's value (calc(1.499999) is 1,
+calc(infinity) 9007200000000000); comments in a value are spaces when
+matching; initial values keep hashes (#000) and unquoted urls
+(url(icons/001.png)) as written; var() checks are token-aware (a string
+"var(--m)" is fine, \76 ar(--b) is a reference); fragment and empty urls
+stay; a typed initial value's urls resolve from the base URL when
+registered (registerProperty) or first read (a rule); registerProperty
+refuses a Symbol member as WebIDL's DOMString conversion does; in
+@property's block initial-value takes any value up to its ; ({a} b),
+another descriptor with a {} block is a rule; registering bumps the
+document's tree counter too (a document without sheets kept its values).
+The gate is now any <style> whose sheet may not be read yet (the
+document's too: a shadow tree read first skipped a document rule), set
+in internal.js sheetCreated and cleared by the registry. Benchmarks after
+(same setup, 5 runs, medians): 38.4 -> 39.6 ms (0 roots), 74.0 -> 74.2 ms
+(20 roots), a <style> added per read 39.8 -> 39.7 ms.
+Round 2 (Copilot): a typed initial value read back the same way
+(currentcolor, color: var(--a), no --a set) recursed: it is on the stack
+too, color is then invalid and the initial value the color it has
+(black, as jsdom 31); url( "a)b.png" ) with whitespace before the quote
+was read as an unquoted url in initial values (a quoted one is a
+function with a string; jsdom keeps it relative when computed).
+Round 3 (2026-11-25, both bots; 18 of 31 probes differed, all match now
+but one): font-size read before --a (--a: 2em; font-size: var(--a))
+took --a's initial value, as the inner read found the cycle: the outer
+one checks cycles31 again after substituting (one more optional lookup
+on a path that parses a declaration anyway, so no benchmark);
+registerProperty checks the initial value as given (1.0 is no
+<integer>, a retry with 1 registers), a rule's after it is written (1.0
+is 1 there, as jsdom 31); escapes are read in units (2p\78 is 2px, in
+values too), names (\61 bc is abc, \31 abc stays, \72 gb(1, 2, 3) is
+rgb()) and CSS-wide keywords (\69 nherit and /*x*/inherit are refused);
+an escaped ) stays in an unquoted url when comments go; a font relative
+unit in a function (sign(1em), linear-gradient(red 1em, blue),
+translate(1em)) makes an initial value dependent; currentcolor in a
+color function is the element's color (computed as background-color
+computes it); resetWindow clears registerProperty's Map; a shadow root
+is tracked once per document (a WeakSet). Found and left for F3 (regular
+properties too): relative colors (rgb(from blue r g b)) compute to
+color(srgb 0 0 1) in jsdom 31, warpdom keeps the text.
+Round 4 (2026-11-25): an escaped CSS-wide keyword or default
+(\69 nherit, \44 efault) was a <custom-ident>, in values too; container
+units (cqw, cqh, cqi, cqb, cqmin, cqmax) make an initial value dependent,
+as jsdom 31 has it (viewport units do not), in blocks too (sign((1em)));
+resetWindow marks the tracked shadow roots it leaves out of the document
+as discarded (a WeakSet): their sheets register nothing in the next file
+while the root is out of the document, and a root still connected (the
+kept body's) keeps registering. (Decided 2026-11-25, Copilot round 5: a
+discarded root registers only while connected, unlike a detached root's
+adopted sheets in jsdom 31. Clearing the mark on reconnection would add
+work to every insertion, and clearing it when the registry saw the root
+connected made the result depend on whether a style was read in between.
+A fresh jsdom window never sees the last file's nodes, so this case has
+no jsdom behavior to match.)
+Round 6 (Copilot's closer look on 180580d, probed): escaped units are
+read before matching, in calculations too (calc(2\65 m + 1px) is 21px
+at 10px, calc(90d\65 g) 90deg); a <string> the end closes ("abc) is
+one, a newline not escaped makes none. Found and left for F3 (regular
+properties too): calc() takes + or - without whitespace before it
+(calc(2px+ 1px): jsdom 31 refuses it, warpdom has 3px, on width as well,
+so calc(2p\78 + 1px), whose escape takes the space, is accepted too);
+image-set() computes its strings as url() and its x as dppx in jsdom 31
+(image-set(url("a.png") 1dppx)), warpdom keeps them as written.
+Round 7: a backslash the end of the value leaves in a string is dropped
+("abc\ is "abc"); a backslash before CR LF escapes both, in initial
+values and the <string> check; an escaped e that a sign or digit follows
+stays escaped when units are read (calc(1\65+2) is no 1e+2).
+Round 8: a newline escaped ends the escape before it ("\41\<CR LF>B" is
+"AB", not one escape \41B): continuations are no longer removed before
+readEscapes, which drops them itself after ending the escape before
+them; the comment scan steps over an escaped CR LF whole.
+Found and left for F3 (custom properties too): jsdom 31 keeps CR LF in a
+specified value set with setProperty ("a\<CR LF>b"), warpdom has LF.
+Next: F3 (the smaller details, the regular-property differences above),
+then NEWEST_MODELED_JSDOM to 31.

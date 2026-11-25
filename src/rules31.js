@@ -20,6 +20,12 @@
 //   base-palette (light, dark or an integer, at most 2147483647) and
 //   override-colors (integer and color pairs; no currentcolor, system
 //   color or light-dark()), written in alphabetical order.
+// - @property (#269 part F2): one dashed name, or a list of them (its
+//   name is then ''), and syntax (a string, or the syntax as written;
+//   property31.js), inherits (true or false) and initial-value (the last
+//   one, kept when it matches the syntax and is computationally
+//   independent; property31.js writes it), each with its default when it
+//   is missing (*, true and none).
 // - @view-transition: navigation (auto or none) and types (none, or
 //   identifiers other than the CSS-wide keywords, default and none),
 //   written with their escapes (\31 a).
@@ -28,6 +34,7 @@
 import { parseDeclarationList31, serializeName31 } from './parse31.js';
 import { decodeEscapes } from './conditions31.js';
 import { DARK_SYSTEM_COLORS_31 } from './colors.js';
+import { UNIVERSAL, independent31, initialText31, parseSyntax31, universalInitial31 } from './property31.js';
 
 // --- tokens ---------------------------------------------------------------------------
 
@@ -370,4 +377,61 @@ export function viewTransitionText(data) {
   if (data.types !== null)
     parts.push(`types: ${data.types === 'none' ? 'none' : data.types.map(serializeName31).join(' ')};`);
   return `@view-transition ${parts.length ? `{ ${parts.join(' ')} }` : '{ }'}`;
+}
+
+// --- @property ----------------------------------------------------------------------
+
+// The names in a prelude: dashed identifiers separated by commas, or null.
+function propertyNames(prelude) {
+  const list = tokens(prelude);
+  const items = list === null ? null : commaItems(list);
+  if (items === null) return null;
+  const names = [];
+  for (const item of items) {
+    const tok = item[0];
+    if (item.length !== 1 || tok.t !== 'ident' || !tok.v.startsWith('--') || tok.v.length < 3) return null;
+    names.push(tok.v);
+  }
+  return names;
+}
+
+// The rule's data ({ names, syntax, inherits, initial: the initial
+// value's text or null }), or null when it is dropped.
+export function propertyRule(prelude, body) {
+  const names = propertyNames(prelude);
+  if (names === null) return null;
+  // (base: the document's base URL when the cascade first reads it, which
+  // resolves a typed initial value's urls; cascade.js)
+  const data = { names, syntax: UNIVERSAL, inherits: true, initial: null, base: null };
+  let initial = null;
+  // (a list of declarations and rules: a block before a ; is a rule)
+  // (initial-value takes any value, a {} block too: initial-value: {a} b)
+  for (const decl of parseDeclarationList31(body, [], 'initial-value')) {
+    const key = decl.name.toLowerCase();
+    if (key === 'initial-value') {
+      initial = decl;
+      continue;
+    }
+    if (decl.important) continue;
+    const list = tokens(decl.value);
+    if (list === null || list.length === 0) continue;
+    if (key === 'syntax') {
+      const syntax = parseSyntax31(list.length === 1 && list[0].t === 'string' ? list[0].v : decl.value);
+      if (syntax !== null) data.syntax = syntax;
+    } else if (key === 'inherits') {
+      const lower = list.length === 1 && list[0].t === 'ident' ? list[0].v.toLowerCase() : '';
+      if (lower === 'true' || lower === 'false') data.inherits = lower === 'true';
+    }
+  }
+  if (initial !== null && !initial.important) {
+    // (a style sheet's comments are gone: 1px/**/2px is 1px2px)
+    const text = initialText31(initial.raw, false);
+    const valid = data.syntax === UNIVERSAL ? universalInitial31(text) : independent31(data.syntax, text);
+    if (valid) data.initial = text;
+  }
+  return data;
+}
+export function propertyRuleText(data) {
+  const initial = data.initial === null ? '' : ` initial-value: ${data.initial};`;
+  return `@property ${data.names.map(serializeName31).join(', ')} { syntax: ${quote(data.syntax.text)}; inherits: ${data.inherits};${initial} }`;
 }

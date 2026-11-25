@@ -72,6 +72,9 @@ import {
   mediaMatches,
   supportsMatches,
 } from './cssom.js';
+import { UNIVERSAL, matchValue31, registrations31 } from './property31.js';
+import { isLengthUnit } from './css-values.js';
+import { documentBaseURL } from './base-url.js';
 import { present31 } from './color31.js';
 import { shorthand31, alias31, dropped31, composer31 } from './css31.js';
 import {
@@ -1715,6 +1718,8 @@ function cascadeCache(element) {
       rootDark: undefined,
       lineHeight: undefined,
       customs: undefined,
+      // (jsdom 31: properties in a cycle with a registered one, substitutedValue)
+      cycles31: undefined,
       // (whether the element is in the rendered tree, jsdom 31: styleValue)
       rendered: ds.window[S].compat.computed31 ? undefined : true,
       names: undefined,
@@ -3546,7 +3551,8 @@ export function computedValue(element, property) {
   const name = ALIASES[lower] ?? lower;
   const data = custom ? CUSTOM : LONGHANDS[name];
   if (!data) return shorthandValue(element, name);
-  const compat = element[S].doc[S].window[S].compat;
+  const ds = element[S].doc[S];
+  const compat = ds.window[S].compat;
   // jsdom 31: a logical property is its physical one's value (inherit
   // takes the parent's physical one, black box 31.0.1).
   if (compat.computed31 && isLogical(name)) return computedValue(element, partnerOf(name, flow31(element)));
@@ -3560,6 +3566,12 @@ export function computedValue(element, property) {
     return (cache.fontSize = longhandValue(element, name, data, false, compat, value));
   }
   const value = cascaded(element, name);
+  // jsdom 31: a registered custom property (#269 part F2), kept with the
+  // cascaded values.
+  if (custom && compat.computed31 && (registrations31.made || registrations31.registered || ds.styles31 === true)) {
+    const registered = registered31(element, name, value);
+    if (registered !== undefined) return registered;
+  }
   // jsdom 31: a custom property with var() is substituted once, kept with
   // the cascaded values (a chain using each one twice is not exponential).
   if (custom && compat.computed31 && value !== undefined && mayHaveVar(value)) {
@@ -3726,6 +3738,269 @@ function longhandValue(element, name, data, custom, compat, value) {
   }
 }
 
+// --- registered custom properties (jsdom 31) -----------------------------------------
+
+// jsdom 31 (black box, 31.0.1; #269 part F2): a custom property registered
+// by CSS.registerProperty, or else by an @property rule of a style sheet
+// that applies: the document's, then its shadow trees' (a shadow root's
+// adopted sheets out of the document too; its <style> elements have no
+// sheets there). A later rule for a name wins; a rule in a condition that
+// does not hold, or in a style rule, registers nothing. A registration is
+// { syntax (a property31.js syntax), inherits, initial (its text, or
+// null) }. Not modeled: jsdom 31 orders shadow trees by when they last
+// got a sheet after having none; warpdom by when they were attached.
+// (no rule registers until an @property rule is made, or the document has
+// a <style> whose sheet may not be made yet: styles31, internal.js; #345
+// review)
+function registration31(element, name) {
+  const ds = element[S].doc[S];
+  const registered = ds.window[S].registered31;
+  if (registered === undefined || registered === null) return undefined;
+  const own = registered.size === 0 ? undefined : registered.get(name);
+  if (own !== undefined || (!registrations31.made && ds.styles31 !== true)) return own;
+  return ruleRegistrations31(element[S].doc).get(name);
+}
+const NO_REGISTRATIONS = new Map();
+// The @property rules' registrations by name, kept until the document's
+// tree, style text or CSSOM changes.
+function ruleRegistrations31(doc) {
+  const ds = doc[S];
+  const cached = ds.propertyRules31;
+  if (
+    cached !== undefined &&
+    cached.treeRev === (ds.treeRev ?? 0) &&
+    cached.styleRev === (ds.styleRev ?? 0) &&
+    cached.cssomRev === cssomChanges.rev
+  )
+    return cached.map;
+  const found = { map: NO_REGISTRATIONS, doc };
+  propertySheets31(documentStyleSheets(doc)[S].items(), found);
+  if (ds.adopted !== undefined) propertySheets31(ds.adopted.items, found);
+  const roots = ds.shadowRoots31;
+  if (roots !== undefined) {
+    // (roots that are gone are dropped from the list)
+    let live = 0;
+    for (const ref of roots) {
+      const root = ref.deref();
+      if (root === undefined) continue;
+      roots[live++] = ref;
+      if (root[S].doc !== doc) continue;
+      // (a root resetWindow discarded counts only while connected)
+      if (connected(root[S].host)) propertySheets31(shadowStyleSheets(root)[S].items(), found);
+      else if (ds.shadowRootsReset31?.has(root)) continue;
+      if (root[S].adopted !== undefined) propertySheets31(root[S].adopted.items, found);
+    }
+    roots.length = live;
+  }
+  // (the trees' sheets are made now)
+  ds.styles31 = false;
+  ds.propertyRules31 = {
+    treeRev: ds.treeRev ?? 0,
+    styleRev: ds.styleRev ?? 0,
+    cssomRev: cssomChanges.rev,
+    map: found.map,
+  };
+  return found.map;
+}
+// The @property rules of sheets that apply, into found.map; a sheet with
+// none is known as such until the CSSOM changes.
+function propertySheets31(sheets, found) {
+  for (const sheet of sheets) {
+    const ss = sheet[S];
+    if (ss.disabled || ss.properties31 === cssomChanges.rev) continue;
+    if (!hasPropertyRule31(ss.rules, ss)) {
+      ss.properties31 = cssomChanges.rev;
+      continue;
+    }
+    if (ss.media === undefined || ss.media === null || mediaMatches(ss.media, found.doc, noScheme))
+      propertyRules31(ss.rules, ss, found);
+  }
+}
+const noScheme = () => {};
+// (the rules buildIndex walks: @media, @supports, @layer and @scope)
+function hasPropertyRule31(rules, ss) {
+  for (const rule of rules) {
+    const proto = Object.getPrototypeOf(rule);
+    if (proto === ss.protos.CSSPropertyRule) return true;
+    if (
+      (proto === ss.protos.CSSMediaRule ||
+        proto === ss.protos.CSSSupportsRule ||
+        proto === ss.protos.CSSLayerBlockRule ||
+        proto === ss.protos.CSSScopeRule) &&
+      hasPropertyRule31(ruleArray(rule), ss)
+    )
+      return true;
+  }
+  return false;
+}
+function propertyRules31(rules, ss, found) {
+  for (const rule of rules) {
+    const proto = Object.getPrototypeOf(rule);
+    if (proto === ss.protos.CSSPropertyRule) {
+      if (found.map === NO_REGISTRATIONS) found.map = new Map();
+      const data = rule[S].data;
+      // (its initial value's urls from the base URL then; #345 review)
+      data.base ??= documentBaseURL(found.doc);
+      for (const name of data.names) found.map.set(name, data);
+    } else if (
+      (proto === ss.protos.CSSMediaRule && mediaMatches(rule[S].media, found.doc, noScheme)) ||
+      (proto === ss.protos.CSSSupportsRule && supportsMatches(rule)) ||
+      proto === ss.protos.CSSLayerBlockRule ||
+      proto === ss.protos.CSSScopeRule
+    )
+      propertyRules31(ruleArray(rule), ss, found);
+  }
+}
+// The names registered for an element's document, into names.
+function addRegisteredNames31(element, names) {
+  const ds = element[S].doc[S];
+  const registered = ds.window[S].registered31;
+  if (registered === undefined || registered === null) return;
+  for (const name of registered.keys()) names.add(name);
+  if (!registrations31.made && ds.styles31 !== true) return;
+  for (const name of ruleRegistrations31(element[S].doc).keys()) names.add(name);
+}
+
+// A registered property's computed value, kept with the cascaded values;
+// undefined when it is not registered.
+function registered31(element, name, value) {
+  const registration = registration31(element, name);
+  if (registration === undefined) return undefined;
+  const cache = element[S].cascaded;
+  const known = cache.customs?.get(name);
+  if (known !== undefined) return known;
+  const result = registeredValue31(element, name, registration, value);
+  (cache.customs ??= new Map()).set(name, result);
+  return result;
+}
+const WIDE_KEYWORD = /^\s*(inherit|initial|unset|revert|revert-layer)\s*$/i;
+// A registered property's computed value: its value, var() substituted,
+// computed by its syntax; invalid at computed-value time it is unset
+// (inherited, or its initial value); with none it inherits or is its
+// initial value.
+function registeredValue31(element, name, registration, value) {
+  let text = value;
+  if (text !== undefined && mayHaveVar(text)) text = substitutedValue(element, name, text, true);
+  if (text === null || (text !== undefined && tooManyTokens(text))) text = 'unset';
+  let keyword;
+  if (text === undefined) keyword = registration.inherits ? 'inherit' : 'initial';
+  else keyword = WIDE_KEYWORD.exec(text)?.[1];
+  if (keyword === undefined) {
+    const computed = registration.syntax === UNIVERSAL ? text : typedValue31(element, name, registration, text);
+    if (computed !== null) return computed;
+  }
+  const lower = keyword?.toLowerCase();
+  if (lower === 'initial' || (lower !== 'inherit' && !registration.inherits))
+    return initialValue31(element, name, registration);
+  const parent = inheritParent(element);
+  return parent === null ? initialValue31(element, name, registration) : computedValue(parent, name);
+}
+// A value computed by a syntax, or null. The property is on the stack of
+// those being substituted meanwhile: a property it reads (font-size for
+// em, color for currentcolor) that reads it back through var() is in a
+// cycle with it, and both are then invalid (#345 review).
+function typedValue31(element, name, registration, text) {
+  substituting.push(element, name);
+  let computed;
+  try {
+    computed = matchRegistered31(element, registration.syntax, text, null);
+  } finally {
+    substituting.length -= 2;
+  }
+  const mark = indexOn(cyclic, element, name);
+  if (mark === -1) return computed;
+  cyclic.splice(mark, 2);
+  return null;
+}
+// (a typed initial value is on the stack too: currentcolor with color:
+// var(--a) makes color invalid, and the initial value is then the color
+// it has; #345 review)
+function initialValue31(element, name, registration) {
+  const initial = registration.initial;
+  if (initial === null) return '';
+  // (an empty value is a space, as a custom property's)
+  if (registration.syntax === UNIVERSAL) return initial === '' ? ' ' : initial;
+  substituting.push(element, name);
+  let computed;
+  try {
+    computed = matchRegistered31(element, registration.syntax, initial, registration.base);
+  } finally {
+    substituting.length -= 2;
+  }
+  const mark = indexOn(cyclic, element, name);
+  if (mark !== -1) cyclic.splice(mark, 2);
+  return computed ?? '';
+}
+// (property31.js matchValue31's context: the element being computed, and
+// the base URL of an initial value, else null)
+let matching31 = null;
+let matchingBase31 = null;
+function matchRegistered31(element, syntax, text, base) {
+  const outer = matching31,
+    outerBase = matchingBase31;
+  matching31 = element;
+  matchingBase31 = base;
+  try {
+    return matchValue31(syntax, text, MATCH31);
+  } finally {
+    matching31 = outer;
+    matchingBase31 = outerBase;
+  }
+}
+const ABSOLUTE_UNITS = new Set(['px', 'cm', 'mm', 'q', 'in', 'pt', 'pc']);
+const RELATIVE_LENGTH = /(?<![\w-])([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?)([a-z]+)/gi;
+// A value as the property declares it (colors as jsdom 31 writes them),
+// or null when it is invalid there.
+function declared31(element, property, text) {
+  const window = element[S].doc[S].window;
+  const value = parseDeclarations(`${property}: ${text}`, validationModeOf(window), styleSurfaceOf(window)).get(
+    property,
+  )?.value;
+  return value === undefined || value === '' ? null : value;
+}
+const MATCH31 = {
+  length: (text) => {
+    const px = absoluteLength(text, new LengthContext(matching31, false, false));
+    return px === null || !Number.isFinite(px) ? null : px;
+  },
+  color: (text) => {
+    const element = matching31;
+    const value = declared31(element, 'color', text);
+    // (as a color other than color's: currentcolor in it is the element's
+    // color, light-dark(currentcolor, red); #345 review)
+    return value === null ? null : computeValue(element, 'background-color', value, LONGHANDS['background-color']);
+  },
+  currentColor: () => computedValue(matching31, 'color'),
+  image: (text) => {
+    const element = matching31;
+    const value = declared31(element, 'background-image', text);
+    return value === null ? null : computeValue(element, 'background-image', value, LONGHANDS['background-image']);
+  },
+  // (absolute, from the document's base URL; a fragment alone or nothing
+  // stays: url("#icon"), #345 review)
+  url: (url) => {
+    if (url === '' || url[0] === '#') return url;
+    try {
+      return new URL(url, matchingBase31 ?? documentBaseURL(matching31[S].doc)).href;
+    } catch {
+      return url;
+    }
+  },
+  // (a calculation's relative lengths as px: calc(10% + 1em) is calc(10% + 20px))
+  resolve: (text) => {
+    const element = matching31;
+    let failed = false;
+    const out = text.replace(RELATIVE_LENGTH, (whole, n, unit) => {
+      const lower = unit.toLowerCase();
+      if (!isLengthUnit(lower) || ABSOLUTE_UNITS.has(lower)) return whole;
+      const px = absoluteLength(`${n}${lower}`, new LengthContext(element, false, false));
+      if (px === null) failed = true;
+      return `${sixDigits(px ?? 0)}px`;
+    });
+    return failed ? null : out;
+  },
+};
+
 // --- var() substitution (jsdom 31) ---------------------------------------------------
 
 const HAS_VAR = /var\(/i;
@@ -3787,8 +4062,27 @@ function substitutedValue(element, name, value, custom) {
     property = value.slice(from, at);
     value = value.slice(at + 1);
   }
-  const text = substituteVars(value, customLookup, element);
-  if (text === null) return null;
+  // (on the stack too: a registered property it reads that reads it back,
+  // font-size: var(--a) with --a: 2em, is in a cycle with it, and it stays
+  // invalid with the element's values; typedValue31, #345 review)
+  const cache = element[S].cascaded;
+  if (cache?.cycles31?.has(name)) return null;
+  substituting.push(element, name);
+  let text;
+  try {
+    text = substituteVars(value, customLookup, element);
+  } finally {
+    substituting.length -= 2;
+  }
+  const mark = indexOn(cyclic, element, name);
+  if (mark !== -1) {
+    cyclic.splice(mark, 2);
+    if (cache !== undefined) (cache.cycles31 ??= new Set()).add(name);
+    return null;
+  }
+  // (found in the cycle by a read of it within this one: font-size read
+  // first; #345 review)
+  if (text === null || cache?.cycles31?.has(name)) return null;
   const window = element[S].doc[S].window;
   const decls = parseDeclarations(`${property}: ${text}`, validationModeOf(window), styleSurfaceOf(window));
   const declared = decls.get(longhand)?.value;
@@ -4127,6 +4421,8 @@ function names31(element) {
 function namesNow31(element) {
   longhands31 ??= computedLonghands31();
   const customs = new Set();
+  // (registered properties, which may have a value though none is set)
+  addRegisteredNames31(element, customs);
   for (let e = element; e !== null; e = inheritParent(e)) {
     for (const name of ruleIndex(e).keys()) if (name.startsWith('--')) customs.add(name);
     // (a shadow tree's rules for it: :host, ::slotted(), #342 review;

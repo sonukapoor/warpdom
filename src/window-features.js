@@ -1766,6 +1766,7 @@ const LATER_GLOBALS = [
       'CSSPositionTryRule',
       'CSSPositionTryDescriptors',
       'CSSViewTransitionRule',
+      'CSSPropertyRule',
     ],
   ],
   [null, ['FormDataEvent', 'TimeRanges', 'ToggleEvent']],
@@ -2199,6 +2200,8 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
         }
       },
       ws.compat.jsdom >= 31 ? supportsDeclarationOf(ws.protos) : null,
+      // (jsdom 31's CSS.registerProperty: cascade.js reads these)
+      ws.compat.jsdom >= 31 ? { registered: (ws.registered31 = new Map()), document: () => window.document } : null,
     ),
     writable: true,
     configurable: true,
