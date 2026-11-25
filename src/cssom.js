@@ -1632,6 +1632,9 @@ function setAdopted(node, iface, items, i, sheet) {
   return true;
 }
 function setAdoptedLength(items, value) {
+  // (WebIDL's conversion: a BigInt primitive is refused, an object
+  // wrapping one converts)
+  if (typeof value === 'bigint') throw new TypeError('Value is a BigInt which cannot be converted to a number.');
   const length = Number(value) >>> 0;
   if (length !== Number(value)) throw new RangeError('Invalid array length');
   if (length > items.length) return false;

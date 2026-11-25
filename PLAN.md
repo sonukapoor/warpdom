@@ -8744,6 +8744,11 @@ Array.prototype took setAdopted's write (setAdopted now defines its own
 data property). Not matched on purpose: jsdom 31.0.1 stores a hole
 there and its getComputedStyle then throws; warpdom keeps the sheet
 (a warpdom-only test).
+Round 4 (e6ee496, Copilot's "closer look" on length handling): probed
+31 length cases (conversions, descriptors, array methods) against
+31.0.1; the one difference was length = 1n, which jsdom refuses
+("Value is a BigInt which cannot be converted to a number.") and an
+object wrapping one it converts; matched, with a parity test.
 Next: F (CSSOM leftovers), then NEWEST_MODELED_JSDOM to 31. Found for
 F: replace() and replaceSync() messages on a sheet that is not
 constructed (jsdom 30: "Cannot call replaceSync on non-constructed

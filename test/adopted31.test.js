@@ -438,6 +438,26 @@ parity(
   { jsdom: 31 },
 );
 
+parity(
+  'jsdom 31: adoptedStyleSheets length conversions: a BigInt throws, an object wrapping one converts',
+  (w) => {
+    const d = w.document;
+    const array = d.adoptedStyleSheets;
+    const out = [];
+    for (const value of [1n, Object(1n), '1', 1.5, null]) {
+      d.adoptedStyleSheets = [sheet(w, 'p {}'), sheet(w, 'p {}')];
+      out.push(
+        attempt(() => {
+          array.length = value;
+        }),
+        array.length,
+      );
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
+
 // (warpdom only: with an inherited index setter jsdom 31.0.1 stores a
 // hole, and its getComputedStyle then throws; warpdom keeps the sheet)
 test('jsdom 31 adoptedStyleSheets: an inherited index setter does not intercept the list', () => {
