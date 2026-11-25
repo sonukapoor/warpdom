@@ -788,7 +788,10 @@ function adoptTree(node, oldDoc, doc) {
       // cssom.js adoptedStyleSheets; the cascade reads the root's index
       // again there)
       const adopted = s.shadowRoot[S].adopted;
-      if (adopted !== undefined && oldDoc !== doc) adopted.items.length = 0;
+      if (adopted !== undefined && oldDoc !== doc && adopted.items.length !== 0) {
+        adopted.items.length = 0;
+        cssomChanges.rev++;
+      }
       adoptTree(s.shadowRoot, oldDoc, doc);
     }
   }

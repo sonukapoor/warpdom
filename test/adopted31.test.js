@@ -331,3 +331,71 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: adoptedStyleSheets edge cases: moves without a style read, array properties, iterator lookups, extensibility, length descriptors',
+  (w) => {
+    const d = w.document;
+    const cs = (el) => w.getComputedStyle(el).marginTop;
+    const out = [];
+    // (moved to another document and back with no style read between: the
+    // emptied list applies no rules)
+    d.body.innerHTML = '<div id=h></div><p>p</p>';
+    const h = d.getElementById('h');
+    const r = h.attachShadow({ mode: 'open' });
+    r.innerHTML = '<b>b</b>';
+    r.adoptedStyleSheets = [sheet(w, 'b { margin-top: 2px }')];
+    out.push(cs(r.firstChild));
+    const other = d.implementation.createHTMLDocument('');
+    other.body.append(h);
+    d.body.prepend(h);
+    out.push(r.adoptedStyleSheets.length, cs(r.firstChild));
+    // (Symbol.isConcatSpreadable on the array does not change the cascade)
+    const p = sheet(w, 'p { margin-top: 3px }');
+    out.push(
+      attempt(() => {
+        d.adoptedStyleSheets[Symbol.isConcatSpreadable] = false;
+        d.adoptedStyleSheets.push(p);
+        return cs(d.querySelector('p'));
+      }),
+    );
+    d.adoptedStyleSheets = [];
+    // (the iterator is looked up once)
+    let lookups = 0;
+    const once = {
+      get [Symbol.iterator]() {
+        lookups++;
+        return lookups === 1
+          ? function* () {
+              yield p;
+            }
+          : undefined;
+      },
+    };
+    out.push(
+      attempt(() => {
+        d.adoptedStyleSheets = once;
+        return d.adoptedStyleSheets.length;
+      }),
+      lookups,
+    );
+    d.adoptedStyleSheets = [];
+    // (the array stays extensible)
+    const array = d.adoptedStyleSheets;
+    out.push(
+      Reflect.preventExtensions(array),
+      attempt(() => Object.freeze(array)) === array,
+      attempt(() => Object.seal(array)) === array,
+      Object.isExtensible(array),
+    );
+    array.push(p);
+    out.push(array.length);
+    // (length keeps its flags; a refused descriptor removes no sheet)
+    for (const flags of [{ configurable: true }, { enumerable: true }, { writable: false }])
+      out.push(Reflect.defineProperty(array, 'length', { value: 0, ...flags }), array.length);
+    const desc = Object.getOwnPropertyDescriptor(array, 'length');
+    out.push(desc.value, desc.writable, desc.enumerable, desc.configurable, cs(d.querySelector('p')));
+    return out;
+  },
+  { jsdom: 31 },
+);

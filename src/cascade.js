@@ -1127,7 +1127,13 @@ function sheetIndex(holder, ds, root, doc) {
   // (jsdom 31: the tree's adopted sheets after its <style> sheets, cssom.js
   // adoptedStyleSheets)
   const adopted = holder.adopted?.items;
-  const sheets = adopted === undefined || adopted.length === 0 ? own : own.concat(adopted);
+  // (copied by index: the public array's own properties, such as
+  // Symbol.isConcatSpreadable, must not change the list)
+  let sheets = own;
+  if (adopted !== undefined && adopted.length !== 0) {
+    sheets = own.slice();
+    for (let i = 0; i < adopted.length; i++) sheets.push(adopted[i]);
+  }
   const reuse =
     cached && cached.cssomRev === cssomChanges.rev && !cached.index.readsScheme && sameSheets(cached.sheets, sheets);
   const lists = reuse ? cached.lists : [];

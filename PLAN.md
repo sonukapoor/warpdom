@@ -8723,6 +8723,18 @@ the same location (copies of both src trees with one node_modules): cold
 load 30.9 ms and 31.0, a new window 0.213 and 0.211 ms. (Run from the
 checkout and the scratchpad worktree, the cold load differed by 1 ms,
 main faster, for the location alone.)
+Review round 1 (2026-11-24, Copilot and CodeRabbit on c1cfc7b; each
+reproduced, then matched to jsdom 31.0.1): a host moved to another
+document and back with no style read between kept its old index (the
+emptied list now bumps cssomChanges.rev); Symbol.isConcatSpreadable on
+the array broke the cascade (sheetIndex copies the adopted sheets by
+index); the setter looked up the iterator twice (for...of alone does
+it now, through a local named tmp for jsdom's message);
+Reflect.preventExtensions, freeze and seal made the list
+non-extensible (the proxy refuses, as jsdom's: freeze and seal throw);
+a length descriptor with configurable, enumerable or writable: false
+removed sheets before it was refused (refused first now). Test: the
+edge-case parity scenario in test/adopted31.test.js.
 Next: F (CSSOM leftovers), then NEWEST_MODELED_JSDOM to 31. Found for
 F: replace() and replaceSync() messages on a sheet that is not
 constructed (jsdom 30: "Cannot call replaceSync on non-constructed

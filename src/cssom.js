@@ -1553,10 +1553,11 @@ export function setAdoptedStyleSheets(node, iface, value) {
   const failed = `Failed to set the 'adoptedStyleSheets' property on '${iface}': `;
   if (value === null || (typeof value !== 'object' && typeof value !== 'function'))
     throw new TypeError(`${failed}The provided value is not an iterable object.`);
-  // (jsdom's message, its conversion's for...of)
-  if (typeof value[Symbol.iterator] !== 'function') throw new TypeError('tmp is not iterable');
+  // (one lookup of the iterator, by for...of; named for jsdom's message,
+  // "tmp is not iterable")
+  const tmp = value;
   const list = [];
-  for (const sheet of value) {
+  for (const sheet of tmp) {
     if (!isSheet(sheet)) throw new TypeError(`${failed}The provided value's element is not of type 'CSSStyleSheet'.`);
     list.push(sheet);
   }
@@ -1585,6 +1586,9 @@ function newAdopted(node, iface) {
       }
       if (key === 'length') {
         if ('get' in descriptor || 'set' in descriptor) return false;
+        // (length stays writable, not enumerable, not configurable)
+        if (descriptor.configurable === true || descriptor.enumerable === true || descriptor.writable === false)
+          return false;
         return 'value' in descriptor ? setAdoptedLength(items, descriptor.value) : true;
       }
       return Reflect.defineProperty(target, key, descriptor);
@@ -1596,6 +1600,10 @@ function newAdopted(node, iface) {
       items.length = i;
       cssomChanges.rev++;
       return true;
+    },
+    // (the list stays extensible)
+    preventExtensions() {
+      return false;
     },
   });
   return { items, array };
