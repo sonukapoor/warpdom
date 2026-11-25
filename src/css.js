@@ -4479,7 +4479,7 @@ function parseInto31(decls, text, mode, surface, asWritten) {
   const source = asWritten ? String(text ?? '') : preprocessCss(String(text ?? ''));
   for (const decl of parseDeclarationList31(source)) {
     const name = decl.custom ? decl.name : decl.name.toLowerCase();
-    if (dropped(surface, name)) continue;
+    if (dropped(surface, name) || (decl.important && surface.noImportant === true)) continue;
     const declared = declaredValue(name, decl.value, mode, surface);
     if (declared === INVALID || declared === '') continue;
     const stored = set31(
@@ -5909,6 +5909,7 @@ function setDeclaration31(style, s, name, value, priority) {
   }
   const lower = String(priority).toLowerCase();
   if (lower !== '' && lower !== 'important') return;
+  if (lower === 'important' && s.surface.noImportant === true) return;
   const text = writtenValue(name, raw, s);
   if (text === INVALID || text === '') return;
   // (written by a script now, not read empty: --x:  ; when it is one
@@ -6223,11 +6224,38 @@ function propertiesDescriptors(surfaceKey) {
 
 // CSSPageDescriptors' accessors: each descriptor by its dashed name, and
 // by its camel-cased one where that differs.
-function pageDescriptors() {
+const pageDescriptors = () => descriptorAccessors(PAGE_DESCRIPTORS);
+// CSSPositionTryDescriptors (CSS Anchor Positioning 1, @webref/idl
+// css-anchor-position.idl; jsdom 31 adds -webkit-align-self, an alias of
+// align-self): the insets, margins, sizes, self-alignment, position-anchor
+// and position-area.
+const POSITION_TRY_DESCRIPTORS = [
+  ...['', '-top', '-right', '-bottom', '-left', '-block', '-block-start', '-block-end'].map((s) => `margin${s}`),
+  ...['-inline', '-inline-start', '-inline-end'].map((s) => `margin${s}`),
+  'inset',
+  ...['block', 'block-start', 'block-end', 'inline', 'inline-start', 'inline-end'].map((s) => `inset-${s}`),
+  'top',
+  'left',
+  'right',
+  'bottom',
+  ...['width', 'height', 'block-size', 'inline-size'].flatMap((n) => [n, `min-${n}`, `max-${n}`]),
+  'align-self',
+  'justify-self',
+  'place-self',
+  'position-anchor',
+  'position-area',
+  '-webkit-align-self',
+];
+const POSITION_TRY_NAMES = new Set(POSITION_TRY_DESCRIPTORS);
+const positionTryDescriptors = () => descriptorAccessors(POSITION_TRY_DESCRIPTORS);
+function descriptorAccessors(names) {
   const descriptors = Object.create(null);
-  for (const name of PAGE_DESCRIPTORS) {
+  for (const name of names) {
     const camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-    for (const key of camel === name ? [name] : [name, camel]) {
+    // (-webkit-align-self: WebkitAlignSelf and webkitAlignSelf too)
+    const keys = camel === name ? [name] : [name, camel];
+    if (name[0] === '-') keys.push(camel[0].toLowerCase() + camel.slice(1));
+    for (const key of keys) {
       const accessor = {
         get() {
           return valueOf(this, name);
@@ -6445,7 +6473,34 @@ export const CSS_INTERFACES = [
     alias: (compat) => (compat.jsdom < 29 ? 'CSSStyleDeclaration' : null),
   },
   { name: 'CSSPageDescriptors', parent: 'CSSStyleDeclaration', descriptors: pageDescriptors },
+  { name: 'CSSPositionTryDescriptors', parent: 'CSSStyleDeclaration', descriptors: positionTryDescriptors },
 ];
+
+// CSSPositionTryDescriptors (jsdom 31, black box 31.0.1): the profile's
+// style surface with the names other than its descriptors dropped, as
+// parsing and setProperty drop names it does not know (window.js, when
+// the prototype is made).
+const positionTrySurfaces = new WeakMap(); // surface -> its descriptors' surface
+export function setPositionTryMode(proto, mode, compat) {
+  setValidationMode(proto, mode, compat);
+  const base = surfaces.get(proto);
+  if (base === undefined) return;
+  let surface = positionTrySurfaces.get(base);
+  if (surface === undefined) {
+    const drops = { has: (name) => !POSITION_TRY_NAMES.has(name) || base.drops.has(name) };
+    positionTrySurfaces.set(base, (surface = { ...base, drops, noImportant: true }));
+  }
+  surfaces.set(proto, surface);
+}
+// An @position-try rule's descriptors: !important ones are dropped, when
+// parsed and when set (noImportant; black box, 31.0.1).
+export const positionTryBlock = (proto, text, parentRule) => declarationBlock(proto, text, parentRule);
+// A color as a jsdom 31 declaration writes it, or null (@font-palette-values'
+// override-colors, rules31.js).
+export function declaredColor31(value) {
+  const out = declaredValue('color', value, 'spec', styleSurface('jsdom31'));
+  return typeof out === 'string' && out !== '' ? out : null;
+}
 
 // A declaration block owned by a CSS rule (CSSStyleRule.style, ...).
 // mode: 'page' for an @page rule's descriptors; page: how they take a

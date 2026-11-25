@@ -31,7 +31,20 @@ import {
   supportsDeclarationOf,
   replayDeclarations,
   parsedPlain,
+  positionTryBlock,
+  declaredColor31,
 } from './css.js';
+import {
+  familyNames,
+  serializeFamilies,
+  fontFeatureValues,
+  fontFeatureValuesText,
+  fontPaletteValues,
+  fontPaletteValuesText,
+  dashedName,
+  viewTransition,
+  viewTransitionText,
+} from './rules31.js';
 import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutComments } from './cssom-declaration.js';
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
@@ -183,7 +196,8 @@ export function parseRules(text, strict = false, nested = false) {
       continue;
     }
     const end = preludeEnd(text, i);
-    const prelude = stripComments(text.slice(i, end)).trim();
+    const raw = text.slice(i, end);
+    const prelude = stripComments(raw).trim();
     let body = null;
     if (text[end] === '{') {
       const close = blockEnd(text, end, nested);
@@ -194,7 +208,9 @@ export function parseRules(text, strict = false, nested = false) {
     }
     if (prelude[0] === '@') {
       const m = /^@([\w-]+)\s*/.exec(prelude);
-      if (m) records.push({ at: m[1].toLowerCase(), prelude: prelude.slice(m[0].length).trim(), body });
+      // (raw: the prelude with its comments, which separate font family
+      // names; rules31.js)
+      if (m) records.push({ at: m[1].toLowerCase(), prelude: prelude.slice(m[0].length).trim(), body, raw });
       else if (strict) records.push({ invalid: true });
     } else if (body !== null && prelude !== '') {
       records.push({ selector: prelude, body });
@@ -482,6 +498,10 @@ const OWN_CSSOM = new WeakSet();
 // The CSSRule prototypes of windows whose profile has @acemir/cssom's shape
 // (jsdom 27.1.0 to 28; ACEMIR_SHAPE below).
 const ACEMIR_RULES = new WeakSet();
+// The CSSRule prototypes of windows with jsdom 31's newer rules
+// (rules31.js): @starting-style, @font-feature-values,
+// @font-palette-values, @position-try, @view-transition.
+const RULES31 = new WeakSet();
 // The rule interfaces whose prototypes have a cssRules data property there.
 const OWN_RULE_LISTS = new Set(['CSSMediaRule', 'CSSSupportsRule', 'CSSContainerRule', 'CSSLayerBlockRule']);
 
@@ -870,12 +890,46 @@ function createRule(protos, record, sheet, parentRule) {
     const m = /^(?:([\w-]+)\s+)?(?:url\(\s*(["']?)(.*?)\2\s*\)|(["'])(.*?)\4)$/s.exec(prelude);
     if (!m) return null;
     return makeRule(protos, 'CSSNamespaceRule', sheet, parentRule, { prefix: m[1] ?? '', namespaceURI: m[3] ?? m[5] });
+  } else if (RULES31.has(protos.CSSRule) && body !== null && newerRule31(at)) {
+    return newerRule31(at)(protos, prelude, body, sheet, parentRule, record.raw);
   } else {
     return null; // @charset and unknown at-rules
   }
   rule[S].rules = ruleList(protos, body, sheet, rule);
   return rule;
 }
+
+// jsdom 31's newer rules (rules31.js), by at-rule name: each makes its
+// rule, or null when it is dropped.
+const NEWER_RULES31 = {
+  'starting-style'(protos, prelude, body, sheet, parentRule) {
+    if (prelude !== '') return null;
+    const rule = makeRule(protos, 'CSSStartingStyleRule', sheet, parentRule, {});
+    rule[S].rules = ruleList(protos, body, sheet, rule);
+    return rule;
+  },
+  'font-feature-values'(protos, prelude, body, sheet, parentRule, raw) {
+    // (the prelude read with its comments: a/**/b is the family a b)
+    const data = fontFeatureValues(raw.trim().replace(/^@[\w-]+/, ''), body);
+    return data === null ? null : makeRule(protos, 'CSSFontFeatureValuesRule', sheet, parentRule, { data });
+  },
+  'font-palette-values'(protos, prelude, body, sheet, parentRule) {
+    const data = fontPaletteValues(prelude, body, declaredColor31);
+    return data === null ? null : makeRule(protos, 'CSSFontPaletteValuesRule', sheet, parentRule, { data });
+  },
+  'position-try'(protos, prelude, body, sheet, parentRule) {
+    const name = dashedName(prelude);
+    if (name === null) return null;
+    const rule = makeRule(protos, 'CSSPositionTryRule', sheet, parentRule, { name });
+    rule[S].style = positionTryBlock(protos.CSSPositionTryDescriptors, body, rule);
+    return rule;
+  },
+  'view-transition'(protos, prelude, body, sheet, parentRule) {
+    const data = viewTransition(prelude, body);
+    return data === null ? null : makeRule(protos, 'CSSViewTransitionRule', sheet, parentRule, { data, types: null });
+  },
+};
+const newerRule31 = (at) => (Object.hasOwn(NEWER_RULES31, at) ? NEWER_RULES31[at] : null);
 
 // The own length getter and indexed getters of a CSSKeyframesRule in jsdom
 // 27.1.0 to 28 (named get, as jsdom's); one getter per index, shared.
@@ -1050,6 +1104,16 @@ function ruleText(rule) {
       return `${s.keyText} ${styleText(s.style)}`;
     case s.protos.CSSNamespaceRule:
       return `@namespace ${s.prefix ? `${s.prefix} ` : ''}url(${serializeString(s.namespaceURI)});`;
+    case s.protos.CSSStartingStyleRule:
+      return `@starting-style ${nested(ruleArray(rule))}`;
+    case s.protos.CSSFontFeatureValuesRule:
+      return fontFeatureValuesText(s.data);
+    case s.protos.CSSFontPaletteValuesRule:
+      return fontPaletteValuesText(s.data);
+    case s.protos.CSSPositionTryRule:
+      return `@position-try ${s.name} ${styleText(s.style)}`;
+    case s.protos.CSSViewTransitionRule:
+      return viewTransitionText(s.data);
     default:
       return '';
   }
@@ -1930,6 +1994,7 @@ export const CSSOM_INTERFACES = [
       if (ruleVariant(compat) === 'cssom') LEGACY_RULES.add(proto);
       else if (compat.cssomShape === null) OWN_CSSOM.add(proto);
       else ACEMIR_RULES.add(proto);
+      if (compat.jsdom >= 31) RULES31.add(proto);
     },
     members: {
       ...Object.fromEntries(Object.entries(RULE_TYPES).map(([k, v]) => [k, { constant: v }])),
@@ -1959,6 +2024,8 @@ export const CSSOM_INTERFACES = [
             return 11;
           case p.CSSSupportsRule:
             return 12;
+          case p.CSSFontFeatureValuesRule:
+            return 14;
           default:
             return 0;
         }
@@ -2092,6 +2159,71 @@ export const CSSOM_INTERFACES = [
       },
       set style(v) {
         state(this).style.cssText = v;
+      },
+    },
+  },
+  // jsdom 31's newer rules (rules31.js; hidden before, window-features.js
+  // LATER_GLOBALS).
+  { name: 'CSSStartingStyleRule', parent: 'CSSGroupingRule', members: {} },
+  {
+    name: 'CSSFontFeatureValuesRule',
+    parent: 'CSSRule',
+    members: {
+      get fontFamily() {
+        return serializeFamilies(state(this).data.families);
+      },
+      // (a valid family list only)
+      set fontFamily(v) {
+        const names = familyNames(String(v));
+        if (names !== null) state(this).data.families = names;
+      },
+    },
+  },
+  {
+    name: 'CSSFontPaletteValuesRule',
+    parent: 'CSSRule',
+    members: {
+      get name() {
+        return state(this).data.name;
+      },
+      get fontFamily() {
+        return serializeFamilies(state(this).data.families);
+      },
+      get basePalette() {
+        return state(this).data.basePalette;
+      },
+      get overrideColors() {
+        return state(this).data.overrideColors;
+      },
+    },
+  },
+  {
+    name: 'CSSPositionTryRule',
+    parent: 'CSSRule',
+    members: {
+      get name() {
+        return state(this).name;
+      },
+      get style() {
+        return state(this).style;
+      },
+      set style(v) {
+        state(this).style.cssText = v;
+      },
+    },
+  },
+  {
+    name: 'CSSViewTransitionRule',
+    parent: 'CSSRule',
+    members: {
+      get navigation() {
+        return state(this).data.navigation;
+      },
+      // (the same frozen array each time)
+      get types() {
+        const s = state(this);
+        const types = s.data.types;
+        return (s.types ??= Object.freeze(types === null || types === 'none' ? [] : types.slice()));
       },
     },
   },
