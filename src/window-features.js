@@ -1757,7 +1757,16 @@ const LATER_GLOBALS = [
   [[30, 1, 0], ['QuotaExceededError']],
   [
     [31, 0, 0],
-    ['CSSMarginRule', 'CSSPageDescriptors'],
+    [
+      'CSSMarginRule',
+      'CSSPageDescriptors',
+      'CSSStartingStyleRule',
+      'CSSFontFeatureValuesRule',
+      'CSSFontPaletteValuesRule',
+      'CSSPositionTryRule',
+      'CSSPositionTryDescriptors',
+      'CSSViewTransitionRule',
+    ],
   ],
   [null, ['FormDataEvent', 'TimeRanges', 'ToggleEvent']],
 ];

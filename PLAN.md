@@ -8757,3 +8757,111 @@ was not constructed."; warpdom's "Can't call replaceSync on
 non-constructed CSSStyleSheets."), insertRule('@import ...') on a
 constructed sheet (SyntaxError in both), and replace()'s pending state
 (replaceSync and insertRule throw NotAllowedError until it settles).
+
+## 2026-11-25: jsdom 31, CSS part F1: the newer CSSOM rules (branch feat/269-jsdom31-cssom, #269)
+
+Measured first (the default parity tests run against jsdom 31.0.1): three
+still differ, (1) a computed url() is absolute in jsdom 31
+(url("http://localhost:3000/a.png")), (2) selectorText = ':is(a' is taken
+and written ':is(a)', (3) @property, @starting-style and
+@font-feature-values are rules of their own. jsdom 31 also has
+@font-palette-values, @position-try and @view-transition rules, and
+@property registers the property for the cascade (its initial value,
+inherits, typed computed values such as 1em as 10px, the name in the
+computed style's list; CSS.registerProperty too), which warpdom has
+none of.
+Decision (2026-11-25): part F in three PRs. F1 (this one): the five
+rules that need no registered properties. F2: @property and
+CSS.registerProperty, the rule and the cascade (the syntax descriptor
+and the initial value's check against it are the same work). F3: the
+smaller sheet and rule details (below).
+Behavior (jsdom 31 profile only; black box, 31.0.1; rules31.js):
+- @starting-style: a grouping rule (no prelude, else dropped; type 0),
+  its rules a list as @media's (@import and @namespace dropped); the
+  cascade does not apply them (it applies the rule kinds it knows).
+- @font-feature-values (type 14): a font family list (strings, or runs
+  of identifiers: a generic family's name first, or a CSS-wide keyword
+  or default alone, is none; a comment separates two names), written as
+  identifiers where each word is one and the name is no such keyword
+  (A, B C), as a string otherwise ("1a", "a  b", "serif"). Its block:
+  font-display (auto, block, swap, fallback, optional), then the feature
+  blocks in alphabetical order, names to non-negative integers:
+  @styleset one or more up to 20, @character-variant two (the first up
+  to 99), the others one. A block given twice adds to the first, a name
+  given again moves to the end; empty blocks are not written.
+  fontFamily's setter takes a valid list only.
+- @font-palette-values: a dashed name; font-family required (no generic
+  family), base-palette (light, dark, or an integer clamped to
+  2147483647), override-colors (integer and color pairs, colors as a
+  jsdom 31 declaration writes them; currentcolor, a system color or
+  light-dark() makes the list invalid); written in alphabetical order.
+- @position-try: a dashed name; its style a CSSPositionTryDescriptors
+  (css-anchor-position.idl's names, and -webkit-align-self as jsdom 31
+  has it), which drops other properties and !important ones, parsed or
+  set (the profile's style surface with those names dropped:
+  css.js setPositionTryMode).
+- @view-transition: no prelude; navigation (auto, none), types (none,
+  or identifiers other than the CSS-wide keywords, default and none);
+  types a frozen array, the same one each time.
+- A descriptor that is !important or invalid is dropped; the last valid
+  one wins. The new interfaces are globals from jsdom 31
+  (window-features.js LATER_GLOBALS).
+Not modeled: the order of the interfaces' members (jsdom's are
+alphabetical; warpdom's follow their definitions, as for the other
+rules); a math function as a feature value (jsdom writes
+"[object Object]"). Nesting: these rules inside a style rule are part of
+CSS nesting, which warpdom's sheets do not parse yet.
+Found for F3 (also on main): insertRule's messages in jsdom 31 ("Cannot
+parse invalid rule", "Cannot parse more than a single rule", "Cannot
+insert this rule inside the parent grouping rule.", "Cannot insert this
+rule at index 0 because it would violate the stylesheet's rule
+order.", "Invalid @font-palette-values"); CSSPageDescriptors in jsdom 31
+has the CSS 2 properties (background, border, font, ...) as accessors.
+Speed (node 22.17.1, 6 interleaved runs, medians; copies of both src
+trees in one location with one node_modules): bench/load.js cold load
+31.1 ms on main and 31.3 here, a new window 0.212 and 0.209 ms;
+style sheet parsing in the jsdom 31 profile (60 rule groups, 400
+parses) 182.7 and 184.4 ms (within noise: an at-rule record keeps the
+prelude slice it already made); bench-cs.mjs jsdom 30 profile 92.6 and
+90.5, jsdom 31 204.9 and 200.5.
+Review (2026-11-25, CodeRabbit and Copilot on 68e0fc1, all six
+reproduced on jsdom 31.0.1 and fixed): the @font-feature-values block
+is read with parse31's tokenizer (parseDeclarationList31 with an
+atRules list), as a list of rules and declarations: comments and
+strings hold no blocks, a feature block counts only with no prelude
+(comments are none), and anything with a {} block before its ; is a
+rule and dropped (foo: 1 { a: 1 } @swash {...} keeps @swash; style
+attributes still run to the ;, as jsdom's). In one block the last value
+of a name wins in its place, a later block sets a name already there
+where it is. Feature names and view-transition types are written with
+their escapes (\31 a), and an escaped feature name is kept; dashed
+names (@position-try, @font-palette-values) are one identifier with
+escapes read (--\70 is --p), written back with escapes; override-colors
+refuses the CSS-wide keywords; only CSS whitespace separates words
+(U+00A0 is a name character). Sheet parsing 180.4 ms before and 181.3
+after (6 interleaved runs, medians; noise). Copilot's second pass
+(c7703af, a "previously missed" item, reproduced): in the jsdom 31
+profile the newer rules take their name and prelude from the text as
+written (the record's raw), read as tokens, not from parseRules'
+comment-stripped and String#trim'd prelude (shared by every profile, so
+left as it was): @font-feature-values/**/A is the family A,
+--a/**/b is two tokens (dropped), --a followed by U+00A0 or an escaped
+space keeps it, and a U+00A0 prelude is not empty for @view-transition
+and @starting-style. The at-keyword is read whole (a name character or
+escape after it makes an unknown rule: @font-feature-valuesé,
+@font-feature-values\41). Found there and left for F3 (every profile,
+not the newer rules alone): an escaped ; or { in a selector or an
+at-rule prelude ends it in warpdom (.a\;b {} becomes b {}), while
+jsdom 20 to 31 keep \; in it; jsdom 20 to 26 end at \{ (.a\ {b...)
+and 27 on keep it, and @media then writes the escape back (@media
+a\;b), so the fix is the prelude scan per version plus media query
+serialization. Probing Copilot's "closer look" note on 76581a8:
+override-colors refuses var() and attr() anywhere in a color (jsdom 31
+drops the descriptor; env() is kept), escapes read (v\61 r(--x)). The values' tokenizer (rules31.js
+tokens(), fontFamily's setter included) preprocesses its text (CR, CR
+LF, FF are LF; NUL is U+FFFD) and closes what the end leaves open: an
+open string is a string, a \ at the end is nothing in a string and
+U+FFFD in a name. (jsdom 31 also logs "Could not parse CSS stylesheet"
+for a sheet left open at the end; not modeled.)
+Next: F2 (@property and registered custom properties), F3 (the smaller
+details), then NEWEST_MODELED_JSDOM to 31.
