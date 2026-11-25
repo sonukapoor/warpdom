@@ -3785,11 +3785,9 @@ function ruleRegistrations31(doc) {
       if (root === undefined) continue;
       roots[live++] = ref;
       if (root[S].doc !== doc) continue;
-      if (connected(root[S].host)) {
-        // (a root resetWindow discarded counts again once connected)
-        ds.shadowRootsReset31?.delete(root);
-        propertySheets31(shadowStyleSheets(root)[S].items(), found);
-      } else if (ds.shadowRootsReset31?.has(root)) continue;
+      // (a root resetWindow discarded counts only while connected)
+      if (connected(root[S].host)) propertySheets31(shadowStyleSheets(root)[S].items(), found);
+      else if (ds.shadowRootsReset31?.has(root)) continue;
       if (root[S].adopted !== undefined) propertySheets31(root[S].adopted.items, found);
     }
     roots.length = live;

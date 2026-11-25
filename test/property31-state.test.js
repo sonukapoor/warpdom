@@ -51,12 +51,15 @@ test('resetWindow drops the shadow roots whose sheets registered: a root the las
   resetWindow(w);
   assert.equal(read(), '');
   assert.equal(root.adoptedStyleSheets.length, 1);
-  // (put back, its host connected, it registers again; out again, its
-  // adopted sheets count as any detached root's do)
+  // (put back, its host connected, it registers; out again, it does not,
+  // whether or not a style was read while it was in)
   d.body.append(host);
   assert.equal(read(), '1px');
   host.remove();
-  assert.equal(read(), '1px');
+  assert.equal(read(), '');
+  d.body.append(host);
+  host.remove();
+  assert.equal(read(), '');
 });
 
 test("resetWindow keeps a shadow root still connected registering: the kept body's", () => {

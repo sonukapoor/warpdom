@@ -252,9 +252,9 @@ export function resetWindow(window) {
   ds.ranges = undefined;
   // jsdom 31: the shadow roots whose sheets register (cascade.js
   // ruleRegistrations31). Those the last file left out of the document are
-  // discarded: their sheets register again only once the root is connected
-  // (its host put back). One still connected (the kept body's) stays
-  // (#345 review).
+  // discarded: their sheets register only while the root is connected (its
+  // host put back), whatever was read in between. One still connected (the
+  // kept body's) stays (#345 review).
   const roots = ds.shadowRoots31;
   if (roots !== undefined) {
     const discarded = (ds.shadowRootsReset31 ??= new WeakSet());

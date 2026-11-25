@@ -8988,9 +8988,13 @@ units (cqw, cqh, cqi, cqb, cqmin, cqmax) make an initial value dependent,
 as jsdom 31 has it (viewport units do not), in blocks too (sign((1em)));
 resetWindow marks the tracked shadow roots it leaves out of the document
 as discarded (a WeakSet): their sheets register nothing in the next file
-until the root is connected again (its host put back), and a root still
-connected (the kept body's) keeps registering. (Decided 2026-11-25: a
-discarded root that is connected once is an ordinary root again, so out
-of the document later its adopted sheets count, as jsdom 31 has it.)
+while the root is out of the document, and a root still connected (the
+kept body's) keeps registering. (Decided 2026-11-25, Copilot round 5: a
+discarded root registers only while connected, unlike a detached root's
+adopted sheets in jsdom 31. Clearing the mark on reconnection would add
+work to every insertion, and clearing it when the registry saw the root
+connected made the result depend on whether a style was read in between.
+A fresh jsdom window never sees the last file's nodes, so this case has
+no jsdom behavior to match.)
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.
