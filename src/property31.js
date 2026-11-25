@@ -97,7 +97,7 @@ export function parseSyntax31(text) {
 // character)
 const NAME_RUN = String.raw`(?:[\w\u0080-￿-]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[\s\S]))`;
 const PIECE = new RegExp(
-  String.raw`([ \t\n\r\f]+)|(\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|([uU][rR][lL]\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?)|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${NAME_RUN}*|%)|(#?${NAME_RUN}+)|([\s\S])`,
+  String.raw`([ \t\n\r\f]+)|(\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\(?:\r\n|[\s\S]|$))*"?|'(?:[^'\\\n]|\\(?:\r\n|[\s\S]|$))*'?)|([uU][rR][lL]\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?)|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${NAME_RUN}*|%)|(#?${NAME_RUN}+)|([\s\S])`,
   'y',
 );
 const OPENS = new Set(['(', '[', '{']);
@@ -141,7 +141,8 @@ export function initialText31(text, keepComments) {
 function brokenString(token) {
   for (let i = 1; i < token.length; i++) {
     const c = token[i];
-    if (c === '\\') i++;
+    // (CR LF escaped is one newline escaped)
+    if (c === '\\') i += token[i + 1] === '\r' && token[i + 2] === '\n' ? 2 : 1;
     else if (c === '\n' || c === '\r' || c === '\f') return true;
   }
   return false;
@@ -151,7 +152,11 @@ function stringValue(token) {
   const quote = token[0];
   let body = token.slice(1);
   if (body.endsWith(quote) && !/(?:^|[^\\])(?:\\\\)*\\$/.test(body.slice(0, -1))) body = body.slice(0, -1);
-  return readEscapes(body.replace(/\\\n/g, ''));
+  // (a newline escaped is none, CR LF one too; a backslash the end
+  // leaves is dropped: "abc\; #345 review)
+  body = body.replace(/\\(?:\r\n|[\n\r\f])/g, '');
+  if (/(?:^|[^\\])(?:\\\\)*\\$/.test(body)) body = body.slice(0, -1);
+  return readEscapes(body);
 }
 
 // --- values -----------------------------------------------------------------------------
@@ -203,8 +208,9 @@ function unitsRead(text, list) {
   for (let i = edits.length - 1; i >= 0; i--) {
     const tok = edits[i];
     const unit = unitOf(tok);
-    // (a unit that reads as no name stays escaped: 2\31 x)
-    if (!/^[a-z]+$/.test(unit)) continue;
+    // (a unit that reads as no name stays escaped: 2\31 x; so does an e a
+    // sign or digit follows, no exponent: calc(1\65+2); #345 review)
+    if (!/^[a-z]+$/.test(unit) || (unit === 'e' && /[+\-\d.]/.test(text[tok.e] ?? ''))) continue;
     out = `${out.slice(0, tok.e - tok.unit.length)}${unit}${out.slice(tok.e)}`;
   }
   return out;

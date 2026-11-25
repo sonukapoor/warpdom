@@ -9005,5 +9005,9 @@ properties too): calc() takes + or - without whitespace before it
 so calc(2p\78 + 1px), whose escape takes the space, is accepted too);
 image-set() computes its strings as url() and its x as dppx in jsdom 31
 (image-set(url("a.png") 1dppx)), warpdom keeps them as written.
+Round 7: a backslash the end of the value leaves in a string is dropped
+("abc\ is "abc"); a backslash before CR LF escapes both, in initial
+values and the <string> check; an escaped e that a sign or digit follows
+stays escaped when units are read (calc(1\65+2) is no 1e+2).
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.

@@ -898,3 +898,36 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'review round 7: a backslash the end leaves in a string, CR LF escaped, an escaped e before a sign (#345 review)',
+  (w) => {
+    const get = tree(w);
+    const out = [];
+    for (const [syntax, initial] of [
+      ['<string>', '"abc\\'],
+      ['*', '"abc\\'],
+      ['<string>', "'abc\\"],
+      ['<string>', '"a\\\r\nb"'],
+      ['*', '"a\\\r\nb"'],
+      ['<number>', 'calc(1\\65+2)'],
+      ['<number>', 'calc(1\\45+2)'],
+      ['<length>', '1\\65+3px'],
+    ]) {
+      const name = `--n${out.length}`;
+      out.push(
+        attempt(() => w.CSS.registerProperty({ name, syntax, inherits: false, initialValue: initial })),
+        get('p', name),
+      );
+    }
+    for (const syntax of ['<string>', '*']) {
+      const text = `@property --a { syntax: "${syntax}"; inherits: false; initial-value: "a\\\r\nb"; }`;
+      out.push(ruleOf(w, text), valuesOf(w, text));
+    }
+    w.CSS.registerProperty({ name: '--x', syntax: '<number>', inherits: false, initialValue: '0' });
+    sheet(w, '#p { --x: calc(1\\65+2) }');
+    out.push(get('p', '--x'));
+    return out;
+  },
+  { jsdom: 31 },
+);
