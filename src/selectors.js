@@ -1551,7 +1551,7 @@ function shadowRuleOf(text) {
     return { kind: 'host', match: compileCompound(last), slot: null, specificity };
   const at = last.tests.findIndex((t) => t.kind === 'slotted');
   if (at < 0 || at !== last.tests.length - 1) return null;
-  const slotPart = { type: last.type, tests: last.tests.slice(0, at) };
+  const slotPart = { type: last.type, tests: last.tests.slice(0, at), named: last.named };
   // (an argument of :host or :host-context() alone: no element is
   // featureless, #342 review)
   const arg = last.tests[at].arg;

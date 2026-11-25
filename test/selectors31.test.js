@@ -459,3 +459,21 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#346 review): \\*::slotted() needs an element named *; @scope keeps U+00A0 in start and end',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<div id=h></div>';
+    const host = d.getElementById('h');
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<style>\\*::slotted(i) { color: red } slot::slotted(b) { color: blue }</style><slot></slot>';
+    host.innerHTML = '<i id=i></i><b id=b></b>';
+    const color = (id) => w.getComputedStyle(d.getElementById(id)).color;
+    const style = d.createElement('style');
+    style.textContent = '@scope ( .a ) to ( p) { a { color: red } } @scope ( .b ) { a { color: red } }';
+    d.head.append(style);
+    return [color('i'), color('b'), [...style.sheet.cssRules].map((r) => [r.start, r.end])];
+  },
+  { jsdom: 31 },
+);

@@ -859,10 +859,12 @@ function createRule(protos, record, sheet, parentRule) {
       ? scopePrelude31(prelude)
       : /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
     if (!m) return null;
+    // (jsdom 31 trims only CSS whitespace: U+00A0 stays, #346 review)
+    const trim = MEDIA31.has(protos.MediaList) ? cssTrim : (text) => text.trim();
     rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, {
       prelude,
-      start: m[1]?.trim() ?? null,
-      end: m[2]?.trim() ?? null,
+      start: m[1] === undefined ? null : trim(m[1]),
+      end: m[2] === undefined ? null : trim(m[2]),
     });
   } else if (at === 'counter-style' && body !== null) {
     if (

@@ -9116,5 +9116,9 @@ reproduced): an escaped * (\*) is a type named *, not the universal
 selector (written \*, kept before .a, matches nothing; the compound's
 named); :local-link compares with the document's own URL (an about:blank
 iframe's links to about:blank match, not those to its creator's page).
+Third pass (21e0beb, both reproduced): \*::slotted(i) lost the compound's
+named in the shadow rule and matched any slot (it now matches none, as in
+jsdom 31); CSSScopeRule.start and end trim CSS whitespace only in 31
+(U+00A0 stays, as in the prelude).
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.
