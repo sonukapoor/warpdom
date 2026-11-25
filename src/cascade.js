@@ -48,7 +48,7 @@ import {
   backgroundComponents,
   topLevelCommaSplit,
 } from './shorthands.js';
-import { compileRuleSelector } from './selectors.js';
+import { compileRuleSelector, shadowRule } from './selectors.js';
 import { directionality } from './directionality.js';
 import {
   absoluteLength,
@@ -572,7 +572,51 @@ function pseudoTarget() {
   target.layerCount = 1;
   target.pseudo = null;
   target.noPseudo = null;
+  target.hostRules = null;
+  target.slottedRules = null;
   return target;
+}
+// jsdom 31 (black box, 31.0.1; CSS Scoping 3): a shadow tree's :host rules
+// match its host, its ::slotted() rules an element assigned to one of its
+// slots, directly or through slots in other shadow trees (the slot's
+// selector matched from the slot in this tree).
+const hostMatch = (match, root) => (el, ctx) => el[S].shadowRoot === root && match(el, ctx);
+const slottedMatch = (match, slot, root) => (el, ctx) => {
+  if (!match(el, ctx)) return false;
+  for (let s = findSlot(el); s !== null; s = findSlot(s)) if (rootOf(s) === root) return slot(s, ctx);
+  return false;
+};
+// The shadow trees' rules for an element outside them (hostRules and
+// slottedRules: its slots' trees, the outer first, then its own shadow
+// tree's), kept with its cascaded values. A pseudo-element's are its
+// element's trees' rules for it.
+const NO_INNER = [];
+// (a shadow root's index for an element, or for its pseudo-element name)
+function treeIndex31(root, ds, doc, name) {
+  const index = sheetIndex(root[S], ds, root, doc);
+  return name === undefined ? index : (index.pseudo?.get(name) ?? null);
+}
+function innerIndexes31(element) {
+  const es = element[S];
+  const cache = es.cascaded;
+  if (cache !== undefined && cache.inner !== undefined) return cache.inner;
+  const ds = es.doc[S];
+  let inner = NO_INNER;
+  if (ds.shadowHosts === true && ds.window[S].compat.treeScopedSheets === true) {
+    const base = es.pseudo === undefined ? element : es.origin;
+    const name = es.pseudo;
+    for (let slot = findSlot(base); slot !== null; slot = findSlot(slot)) {
+      const rules = treeIndex31(rootOf(slot), ds, es.doc, name)?.slottedRules;
+      if (rules != null) (inner === NO_INNER ? (inner = []) : inner).push(rules);
+    }
+    const own = base[S].shadowRoot;
+    if (own != null) {
+      const rules = treeIndex31(own, ds, es.doc, name)?.hostRules;
+      if (rules != null) (inner === NO_INNER ? (inner = []) : inner).push(rules);
+    }
+  }
+  if (cache !== undefined) cache.inner = inner;
+  return inner;
 }
 function pseudoIndex(index, name) {
   index.pseudo ??= new Map();
@@ -811,7 +855,7 @@ const MARKER_UA = {
 
 // lists: what was read of rule lists a test can change without the CSSOM
 // knowing (ruleListSnapshot).
-function buildIndex(sheets, mode, compat, lists, doc = null) {
+function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
   const index = new Map();
   index.inOrder = new InOrderIndex();
   index.textDependent = false;
@@ -820,6 +864,8 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
   index.layerCount = 1;
   index.pseudo = null;
   index.noPseudo = null;
+  index.hostRules = null;
+  index.slottedRules = null;
   const counter = { n: 0 };
   // jsdom 31: the layer and @scope the walk is in (layers: CSS Cascade 5;
   // layer 0 is the unlayered one).
@@ -829,9 +875,16 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
   // A rule's declarations for the selectors that compile; target: the
   // index (or a pseudo-element's, pseudoIndex).
   const addSelectors = (text, rule, target, pseudo) => {
+    // (a shadow tree's: rules for its host and its slots' elements apart,
+    // shadowRules)
+    if (root !== null && scope === null) {
+      text = shadowRules(text, rule, target, pseudo);
+      if (text === null) return false;
+      if (text === '') return true;
+    }
     let entries;
     try {
-      entries = compileRuleSelector(scope === null ? text : scopedSelector(text));
+      entries = compileRuleSelector(scope === null ? text : scopedSelector(text), compat?.treeScopedSheets === true);
     } catch {
       return false;
     }
@@ -845,6 +898,33 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
     if (pseudo) entries = entries.map((e) => ({ ...e, match: originating(e.match), specificity: e.specificity + 1 }));
     addDeclarations(target, rule[S].style[S].decls, entries, counter, compat, layer, scope);
     return true;
+  };
+  // A shadow tree's selectors whose subject is outside it (its host, or an
+  // element in one of its slots: shadowRule) go to the target's hostRules
+  // and slottedRules, which only those elements read (innerIndexes31);
+  // the rest, as text, stay for the target (null: invalid).
+  const shadowRules = (text, rule, target, pseudo) => {
+    const rest = [];
+    for (const selector of splitSelectorList(text)) {
+      let found;
+      try {
+        found = shadowRule(selector);
+      } catch {
+        return null;
+      }
+      if (found === null) {
+        rest.push(selector);
+        continue;
+      }
+      const host = found.kind === 'host';
+      const sub = host ? (target.hostRules ??= pseudoTarget()) : (target.slottedRules ??= pseudoTarget());
+      const match = host ? hostMatch(found.match, root) : slottedMatch(found.match, found.slot, root);
+      const entry = pseudo
+        ? { match: originating(match), specificity: found.specificity + 1 }
+        : { match, specificity: found.specificity };
+      addDeclarations(sub, rule[S].style[S].decls, [entry], counter, compat, layer, null);
+    }
+    return rest.join(',');
   };
   const addRule = (rule) => {
     const text = rule[S].selectorText;
@@ -860,7 +940,10 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
         tails[i] === null ? sel : `${tails[i].base}::${tails[i].name.replace(DECODED_ARGUMENT, '(x)')}`,
       );
       try {
-        compileRuleSelector(scope === null ? valid.join(',') : scopedSelector(valid.join(',')));
+        compileRuleSelector(
+          scope === null ? valid.join(',') : scopedSelector(valid.join(',')),
+          compat.treeScopedSheets === true,
+        );
       } catch {
         return;
       }
@@ -945,7 +1028,12 @@ function buildIndex(sheets, mode, compat, lists, doc = null) {
     // specificity when the cascade reads the lists: cascade31)
     const keys = layerKeys(layers);
     index.layerCount = layers.length;
-    for (const target of [index, ...(index.pseudo?.values() ?? [])]) {
+    const targets = [index, ...(index.pseudo?.values() ?? [])];
+    for (const target of targets.slice()) {
+      if (target.hostRules !== null) targets.push(target.hostRules);
+      if (target.slottedRules !== null) targets.push(target.slottedRules);
+    }
+    for (const target of targets) {
       target.layerCount = layers.length;
       target.textDependent = index.textDependent;
       target.readsScheme = index.readsScheme;
@@ -1034,7 +1122,8 @@ function sheetIndex(holder, ds, root, doc) {
   const lists = reuse ? cached.lists : [];
   let index = EMPTY;
   if (reuse) index = cached.index;
-  else if (sheets.length) index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, doc);
+  else if (sheets.length)
+    index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, doc, root);
   holder.cascade = { doc, treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
   return index;
 }
@@ -1586,6 +1675,7 @@ function cascadeCache(element) {
       outerRev,
       inline: inlineMap,
       values: new Map(),
+      inner: undefined,
       detached,
       kept,
       settled,
@@ -1812,11 +1902,28 @@ function winner31(element, index, inlineMap, name, window, cut = 0, below = Infi
   const ua = uaDeclarations31(window, name, cascadeExpand, element);
   const rule = ua.important === null ? undefined : uaRule(ua.important, element);
   if (rule !== undefined) return won31(6, 0, rule.specificity, Infinity, rule.order, rule.value);
+  // Shadow trees' rules for an element outside them (innerIndexes31): by
+  // context, before the style attribute and layers, the innermost tree's
+  // !important ones first, the outer tree's normal ones first (black box,
+  // 31.0.1: a :host rule's !important declaration wins over the host's
+  // style attribute's, the document's normal rule over a :host one). Each
+  // context its own level, so that a logical property and its physical
+  // one meet by context first too (pair31; #342 review).
+  const inner = innerIndexes31(element);
+  for (let i = inner.length - 1; i >= 0; i--) {
+    const own = inner[i].get(name);
+    if (own?.important.length && ruleWinner31(own.important, element, false, 5.5 + i / 1000, Infinity))
+      return win31Value;
+  }
   const inline = inlineMap?.get(name);
   if (inline?.important) return won31(5, 0, 0, Infinity, inline.order, inline.value);
   if (lists?.important.length && ruleWinner31(lists.important, element, index.scoped, 4, Infinity)) return win31Value;
   if (inline !== undefined && !inline.important) return won31(3, 0, 0, Infinity, inline.order, inline.value);
   if (lists?.normal.length && ruleWinner31(lists.normal, element, index.scoped, 2, Infinity)) return win31Value;
+  for (let i = 0; i < inner.length; i++) {
+    const own = inner[i].get(name);
+    if (own?.normal.length && ruleWinner31(own.normal, element, false, 1.5 - i / 1000, Infinity)) return win31Value;
+  }
   return userAgent31(element, name, window, ua);
 }
 // The rule that wins in a list (sorted by layer, specificity and order)
@@ -1912,7 +2019,9 @@ function cascade31(element, index, inlineMap, name, window) {
   // revert in the page's declarations: the user agent sheet's value, of
   // the pair too (black box, 31.0.1: p { margin-top: revert } gives 16px, a
   // div's 0px).
-  if (win31.level >= 2 && win31.level <= 5 && REVERT.test(value)) {
+  // (a shadow tree's rule for an element outside it, about 1.5 or 5.5:
+  // revert-layer there rolls back to the user agent sheet too)
+  if (win31.level > 1 && win31.level < 6 && REVERT.test(value)) {
     value = userAgent31(element, name, window);
     if (partner !== null) {
       copy31(saved31, win31);
@@ -1980,9 +2089,14 @@ function flow31(element) {
 }
 function ownFlow(element, cache) {
   if (uaDirection(element)) return true;
-  for (const name of FLOW_PROPERTIES)
-    if (cache.index.has(name)) return FLOW_PROPERTIES.some((n) => cascaded(element, n) !== undefined);
+  // (its rules', a shadow tree's for it too: :host, ::slotted(), #342 review)
+  if (declaresFlow(cache.index) || innerIndexes31(element).some(declaresFlow))
+    return FLOW_PROPERTIES.some((n) => cascaded(element, n) !== undefined);
   return cache.inline !== null && FLOW_NAMES.test(element[S].attrs.get('style'));
+}
+function declaresFlow(index) {
+  for (let i = 0; i < FLOW_PROPERTIES.length; i++) if (index.has(FLOW_PROPERTIES[i])) return true;
+  return false;
 }
 // A direction found from the element's text.
 function autoDirection(element) {
@@ -2078,7 +2192,9 @@ function darkScheme(element) {
       const inline = inlineDeclarations(n);
       declared =
         (n !== element && n[S].cascaded?.index !== index) ||
-        (inline !== null && (inline.has('color-scheme') || inline.has('all')));
+        (inline !== null && (inline.has('color-scheme') || inline.has('all'))) ||
+        // (a shadow tree's rules for it: :host, ::slotted(), #342 review)
+        innerIndexes31(n).length > 0;
     }
     if (!declared) return false;
   }
@@ -3987,6 +4103,11 @@ function namesNow31(element) {
   const customs = new Set();
   for (let e = element; e !== null; e = inheritParent(e)) {
     for (const name of ruleIndex(e).keys()) if (name.startsWith('--')) customs.add(name);
+    // (a shadow tree's rules for it: :host, ::slotted(), #342 review;
+    // with the ancestor's values as they now are, which keep them)
+    cascadeCache(e);
+    for (const inner of innerIndexes31(e))
+      for (const name of inner.keys()) if (name.startsWith('--')) customs.add(name);
     const inline = inlineDeclarations(e);
     if (inline !== null) for (const name of inline.keys()) if (name.startsWith('--')) customs.add(name);
   }

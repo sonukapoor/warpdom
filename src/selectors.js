@@ -27,10 +27,19 @@ function invalid(selector) {
   return domError(`'${selector}' is not a valid selector.`, 'SyntaxError');
 }
 
+// jsdom 31's cascade (compileRuleSelector's scoping, black box, 31.0.1;
+// CSS Scoping 3): :host-context(), a host compound of :host, :host() and
+// :host-context() alone (any other selector in it matches nothing), their
+// argument's specificity. Elsewhere (the DOM API, and the cascade of jsdom
+// 30 and before, which applies every sheet everywhere) :host( ) is a test
+// of the element itself and :host-context() is invalid.
+let hostScoping = false;
+
 class Parser {
   constructor(text) {
     this.text = preprocess(text);
     this.i = 0;
+    this.depth = 0; // selector lists open: 1 at the top level
   }
 
   peek(offset = 0) {
@@ -114,11 +123,16 @@ class Parser {
   // selector-list := complex ( ',' complex )*
   list(relative = false) {
     const items = [];
-    do {
-      this.skipWs();
-      items.push(this.complex(relative));
-      this.skipWs();
-    } while (this.peek() === ',' && ++this.i);
+    this.depth++;
+    try {
+      do {
+        this.skipWs();
+        items.push(this.complex(relative));
+        this.skipWs();
+      } while (this.peek() === ',' && ++this.i);
+    } finally {
+      this.depth--;
+    }
     return items;
   }
 
@@ -193,9 +207,21 @@ class Parser {
         this.i++;
         if (this.peek() === ':') {
           this.i++;
-          if (this.ident() === null) this.fail();
-          if (this.peek() === '(') this.skipBalanced();
-          tests.push({ kind: 'never' }); // pseudo-elements match no element
+          const name = this.ident();
+          if (name === null) this.fail();
+          // (::slotted(<compound>): jsdom 31's cascade's, in a shadow
+          // tree's rules, shadowRule; no element matches it here either.
+          // In a pseudo-class's argument, and before jsdom 31, it is a
+          // pseudo-element like the others: no specificity, #342 review.)
+          const slotted =
+            hostScoping && this.depth === 1 && name.toLowerCase() === 'slotted' && this.peek() === '('
+              ? this.slotted()
+              : null;
+          if (slotted !== null) tests.push(slotted);
+          else {
+            if (this.peek() === '(') this.skipBalanced();
+            tests.push({ kind: 'never' }); // pseudo-elements match no element
+          }
         } else tests.push(this.pseudo());
       } else break;
     }
@@ -254,20 +280,25 @@ class Parser {
   // A forgiving selector list (:is, :where): an invalid item is dropped.
   forgivingList() {
     const items = [];
-    for (;;) {
-      this.skipWs();
-      const start = this.i;
-      try {
-        const item = this.complex(false);
+    this.depth++;
+    try {
+      for (;;) {
         this.skipWs();
-        if (this.peek() !== ',' && this.peek() !== ')') this.fail();
-        items.push(item);
-      } catch {
-        this.i = start;
-        this.skipItem();
+        const start = this.i;
+        try {
+          const item = this.complex(false);
+          this.skipWs();
+          if (this.peek() !== ',' && this.peek() !== ')') this.fail();
+          items.push(item);
+        } catch {
+          this.i = start;
+          this.skipItem();
+        }
+        if (this.peek() !== ',') return items;
+        this.i++;
       }
-      if (this.peek() !== ',') return items;
-      this.i++;
+    } finally {
+      this.depth--;
     }
   }
 
@@ -284,6 +315,26 @@ class Parser {
       else if (c === '\\') this.i += 2;
       else this.i++;
     }
+  }
+
+  // ::slotted('s argument, a compound (null: something else, skipped
+  // as the argument of any other pseudo-element)
+  slotted() {
+    const open = this.i;
+    try {
+      this.i++;
+      this.skipWs();
+      const list = this.list();
+      this.skipWs();
+      if (this.peek() === ')' && list.length === 1 && list[0].parts.length === 1) {
+        this.i++;
+        return { kind: 'slotted', arg: list[0].parts[0] };
+      }
+    } catch {
+      // (an argument that is no selector)
+    }
+    this.i = open;
+    return null;
   }
 
   skipBalanced() {
@@ -308,7 +359,8 @@ class Parser {
     this.skipWs();
     let arg;
     if (lower === 'is' || lower === 'where') arg = this.forgivingList();
-    else if (['not', 'matches', '-webkit-any', 'host'].includes(lower)) arg = this.list();
+    else if (['not', 'matches', '-webkit-any', 'host'].includes(lower) || (lower === 'host-context' && hostScoping))
+      arg = this.list();
     else if (lower === 'has') arg = this.list(true);
     else if (['nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type'].includes(lower))
       arg = this.nth(lower.endsWith('child'));
@@ -404,6 +456,12 @@ const SIMPLE_PSEUDOS = new Set([
 const parentElement = (el) => {
   const p = el[S].parent;
   return p && p[S].type === ELEMENT_NODE ? p : null;
+};
+const shadowIncludingParent = (el) => {
+  const p = el[S].parent;
+  if (p === null) return null;
+  if (p[S].type === ELEMENT_NODE) return p;
+  return p[S].shadow === true ? p[S].host : null;
 };
 const prevElement = (el) => {
   for (let n = el[S].prev; n; n = n[S].prev) if (n[S].type === ELEMENT_NODE) return n;
@@ -518,6 +576,7 @@ function compileTest(t) {
       };
     }
     case 'never':
+    case 'slotted':
       return () => false;
     case 'attr':
       return compileAttribute(t);
@@ -619,8 +678,19 @@ function compilePseudo({ name, arg }) {
     // top-level elements through a combinator (compileComplex).
     case 'host': {
       if (!arg) return () => true;
+      // (one compound: :host(.a, .b) matches nothing, black box, jsdom 31.0.1)
+      if (hostScoping && (arg.length !== 1 || arg[0].parts.length !== 1)) return () => false;
       const m = compileList(arg);
       return (el, ctx) => m(el, ctx);
+    }
+    // The host, or an element above it (shadow-including), matching it.
+    case 'host-context': {
+      if (arg.length !== 1 || arg[0].parts.length !== 1) return () => false;
+      const m = compileList(arg);
+      return (el, ctx) => {
+        for (let n = el; n !== null; n = shadowIncludingParent(n)) if (m(n, ctx)) return true;
+        return false;
+      };
     }
     case 'has': {
       const rel = arg.map(compileRelative);
@@ -794,8 +864,15 @@ function isReadWrite(el) {
 
 // A compound made of :host alone: matches the shadow host, as the parent of
 // its shadow tree's top-level elements (CSS Scoping 3.1.1).
+// (made of :host, :host() and :host-context() only: the host is
+// featureless, any other selector in the compound matches nothing; black
+// box, jsdom 31.0.1: b:host, :host.a, :host:not(.z) match nothing)
+const isHostTest = (t) => t.kind === 'pseudo' && (t.name === 'host' || t.name === 'host-context');
 const isHostCompound = ({ type, tests }) =>
-  type === null && tests.length === 1 && tests[0].kind === 'pseudo' && tests[0].name === 'host';
+  type === null &&
+  (hostScoping
+    ? tests.length > 0 && tests.every(isHostTest)
+    : tests.length === 1 && tests[0].kind === 'pseudo' && tests[0].name === 'host');
 const shadowHostOfParent = (el) => {
   const p = el[S].parent;
   return p !== null && p[S].shadow === true ? p[S].host : null;
@@ -806,7 +883,9 @@ const shadowHostAbove = (el) => {
   return n[S].shadow === true ? n[S].host : null;
 };
 
-function compileCompound({ type, tests }) {
+function compileCompound(compound) {
+  const { type, tests } = compound;
+  if (hostScoping && tests.some(isHostTest) && !isHostCompound(compound)) return () => false;
   const checks = tests.map(compileTest);
   const lower = type && type !== '*' ? type.toLowerCase() : null;
   const typeCheck = lower === null ? null : (el) => (isHTML(el) ? el[S].tag === lower : el[S].tag === type);
@@ -953,8 +1032,16 @@ function complexSpecificity({ parts }) {
         case 'never':
           total += 1;
           break; // a pseudo-element
+        case 'slotted':
+          total += 1 + complexSpecificity({ parts: [t.arg] });
+          break;
         case 'pseudo':
           if (t.name === 'where') break;
+          // (:host() and :host-context(): their argument's too)
+          if (hostScoping && (t.name === 'host' || t.name === 'host-context')) {
+            total += 1e3 + (t.arg ? listSpecificity(t.arg) : 0);
+            break;
+          }
           if (t.name === 'is' || t.name === 'not' || t.name === 'has') total += listSpecificity(t.arg);
           else total += 1e3 + (t.arg?.of ? listSpecificity(t.arg.of) : 0);
           break;
@@ -970,22 +1057,76 @@ function complexSpecificity({ parts }) {
 // its own, with its specificity. Throws on an invalid selector.
 const ruleCache = new Map();
 
-export function compileRuleSelector(selector) {
+// (scoping: jsdom 31's cascade, hostScoping)
+export function compileRuleSelector(selector, scoping = false) {
   const text = String(selector);
-  let entries = ruleCache.get(text);
+  const key = scoping ? `\0${text}` : text;
+  let entries = ruleCache.get(key);
   if (!entries) {
-    const parser = new Parser(text);
-    const list = parser.list();
-    if (parser.i < parser.text.length) throw invalid(text);
-    entries = list.map((complex) => {
-      compilingText = false;
-      const match = compileComplex(complex);
-      return { match, specificity: complexSpecificity(complex), text: compilingText };
-    });
+    hostScoping = scoping;
+    try {
+      const parser = new Parser(text);
+      const list = parser.list();
+      if (parser.i < parser.text.length) throw invalid(text);
+      entries = list.map((complex) => {
+        compilingText = false;
+        const match = compileComplex(complex);
+        return { match, specificity: complexSpecificity(complex), text: compilingText };
+      });
+    } finally {
+      hostScoping = false;
+    }
     if (ruleCache.size >= CACHE_LIMIT) ruleCache.clear();
-    ruleCache.set(text, entries);
+    ruleCache.set(key, entries);
   }
   return entries;
+}
+
+// A shadow tree's rule whose subject is outside it (CSS Scoping 3): its
+// host (a compound of :host, :host() and :host-context() alone) or an
+// element assigned to one of its slots (...::slotted(<compound>) at the
+// end: the compound before it, and the combinators, for the slot). null
+// for any other selector; throws on an invalid one.
+// host: { kind, match(host), specificity }; slotted: { kind, match(element),
+// slot(slot), specificity }.
+const shadowRuleCache = new Map();
+export function shadowRule(selector) {
+  const text = String(selector);
+  let rule = shadowRuleCache.get(text);
+  if (rule === undefined) {
+    hostScoping = true;
+    try {
+      rule = shadowRuleOf(text);
+    } finally {
+      hostScoping = false;
+    }
+    if (shadowRuleCache.size >= CACHE_LIMIT) shadowRuleCache.clear();
+    shadowRuleCache.set(text, rule);
+  }
+  return rule;
+}
+function shadowRuleOf(text) {
+  const parser = new Parser(text);
+  const list = parser.list();
+  if (parser.i < parser.text.length || list.length !== 1) throw invalid(text);
+  const complex = list[0];
+  const { parts } = complex;
+  const last = parts[parts.length - 1];
+  const specificity = complexSpecificity(complex);
+  if (parts.length === 1 && isHostCompound(last))
+    return { kind: 'host', match: compileCompound(last), slot: null, specificity };
+  const at = last.tests.findIndex((t) => t.kind === 'slotted');
+  if (at < 0 || at !== last.tests.length - 1) return null;
+  const slotPart = { type: last.type, tests: last.tests.slice(0, at) };
+  // (an argument of :host or :host-context() alone: no element is
+  // featureless, #342 review)
+  const arg = last.tests[at].arg;
+  return {
+    kind: 'slotted',
+    match: arg.tests.some(isHostTest) ? () => false : compileCompound(arg),
+    slot: compileComplex({ ...complex, parts: [...parts.slice(0, -1), slotPart] }),
+    specificity,
+  };
 }
 
 export function matches(el, selector) {

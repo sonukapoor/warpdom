@@ -8600,3 +8600,81 @@ An element's connected cascade cache also compares its document (as
 the detached one did): a host moved into a document whose counters
 match keeps no values from the old one.
 Next: S2 (:host, ::slotted()), S3 (adoptedStyleSheets), then F.
+
+2026-11-24, jsdom 31 shadow scoping S2: :host, :host(), :host-context()
+and ::slotted() (#269). Black box, 31.0.1 (scratchpad probes, now
+test/host-slotted31.test.js):
+- A shadow tree's rules whose subject is outside it apply there: a
+  compound of :host, :host() and :host-context() alone to the host (any
+  other selector in it, b:host, :host.a, :host:not(.z), :host:first-child,
+  matches nothing: the host is featureless), ...::slotted(<compound>) to
+  an element assigned to one of its slots, directly or through slots of
+  other shadow trees (the selector before it, with its combinators, for
+  the slot: :host ::slotted(i), div ::slotted(i)). :host() and
+  ::slotted() take one compound (:host(.a, .b), ::slotted(i, b),
+  ::slotted(.a .x) match nothing); :host-context() matches the host or a
+  shadow-including ancestor. :host::before and ::slotted(x)::before style
+  those pseudo-elements. Specificity: the argument's too.
+- Cascade by context (CSS Cascade 5), before the style attribute and
+  layers: the outer tree's normal declarations win over the inner tree's
+  (the document's div { margin-top } over :host, even layered over
+  unlayered), the inner tree's !important ones over the outer tree's, the
+  style attribute's !important ones too. Nested slots: the outer tree
+  first for normal ones.
+- jsdom 31's cascade only (compat.treeScopedSheets): selectors.js
+  compileRuleSelector(text, scoping) turns these on (hostScoping:
+  :host-context(), featureless host compounds, the argument's
+  specificity); the DOM API and the cascade of jsdom 30 and before are as
+  they were (the jsdom 30 profile gives the same values as main on every
+  case; jsdom 30 matches some compounds of :host and other selectors, as
+  it applies the shadow tree's sheet to the document, which warpdom does
+  not model, before or now; element.matches('div:host') is true in
+  warpdom and false in jsdom 30 and 31, as before).
+- Design: a shadow root's index keeps these rules apart (hostRules,
+  slottedRules, a pseudo-element's index too; selectors.js shadowRule
+  classifies them); an element outside reads its contexts' (its slots'
+  trees, then its own shadow tree's: innerIndexes31, kept with its
+  cascaded values) in winner31 at levels 5.5 (!important, above the style
+  attribute's) and 1.5 (normal, below the page's rules). revert and
+  revert-layer there roll back to the user agent sheet.
+- Speed (6 interleaved runs, medians): bench-cs.mjs, no shadow trees:
+  jsdom 30 profile 103.1 ms on main, 104.1 here; jsdom 31 229.0 and
+  231.9. bench-sh.mjs (a host, a slotted element and a shadow child read
+  after a style write each round, jsdom 31 profile): 178.0 and 192.6, 8%
+  slower: the rules that now apply are matched and their values computed
+  (main gives none of them); the slot index is rebuilt as often as on
+  main (101 times in 100 rounds, both), two more lookups per round.
+Review round (#342): the code that reads an element's index for one
+property besides winner31 reads these rules too: color-scheme's fast
+path (darkScheme: a :host { color-scheme: dark } host's light-dark()),
+the custom property names a computed style lists (namesNow31), whether
+the element has a flow of its own (ownFlow: :host { direction: rtl }
+maps margin-inline-start to the right); each context has a level of its
+own (1.5 - i/1000, 5.5 + i/1000), so that a logical property and its
+physical one meet by context first (pair31).
+Second round (2026-11-24, jsdom 31.0.1 black box): ::slotted(:host),
+::slotted(:host-context(body)) and ::slotted(:host(i)) style nothing
+(none of the slotted elements is featureless); ::slotted() in :is() is a
+pseudo-element like ::before there, dropped from the forgiving list with
+no specificity. The parser reads ::slotted() as its own kind only in
+jsdom 31's cascade and at a list's top level, so jsdom 30 and the DOM API
+read selectors as on main. (jsdom 30 counts ::slotted(#x) in :is() in
+specificity; not modeled, as before.) Not changed: @scope (#w) {
+::slotted(i) { ... } } styles nothing in jsdom 31, which warpdom gives
+already (the rule goes to the ordinary index, where ::slotted() matches
+no element).
+Third round (2026-11-24): a computed style's custom property names read
+each ancestor's shadow-tree rules through its values as they now are
+(cascadeCache first): a shadow child listed a host's old :host names
+after its sheet changed, until the host was read again. Found, not
+changed (also on main): jsdom 30.1.3 resolves light-dark() in a computed
+color to its first color; warpdom's jsdom 30 profile leaves it as
+written.
+Fourth round (2026-11-24): in jsdom 31, @supports selector() and
+CSS.supports() read a selector as its cascade does (compileRuleSelector
+with host scoping), so selector(:host-context(.a)) holds and a shadow
+tree's guarded rules apply. Found, not changed (also on main):
+selector(:is(::slotted(i))) is true in warpdom, false in jsdom 31; jsdom
+30's CSS.supports() rejects :host, :host() and ::slotted(), warpdom's
+jsdom 30 profile takes them.
+Next: S3 (adoptedStyleSheets), then F.
