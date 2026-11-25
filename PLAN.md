@@ -8847,6 +8847,14 @@ comment-stripped and String#trim'd prelude (shared by every profile, so
 left as it was): @font-feature-values/**/A is the family A,
 --a/**/b is two tokens (dropped), --a followed by U+00A0 or an escaped
 space keeps it, and a U+00A0 prelude is not empty for @view-transition
-and @starting-style.
+and @starting-style. The at-keyword is read whole (a name character or
+escape after it makes an unknown rule: @font-feature-valuesé,
+@font-feature-values\41). Found there and left for F3 (every profile,
+not the newer rules alone): an escaped ; or { in a selector or an
+at-rule prelude ends it in warpdom (.a\;b {} becomes b {}), while
+jsdom 20 to 31 keep \; in it; jsdom 20 to 26 end at \{ (.a\ {b...)
+and 27 on keep it, and @media then writes the escape back (@media
+a\;b), so the fix is the prelude scan per version plus media query
+serialization.
 Next: F2 (@property and registered custom properties), F3 (the smaller
 details), then NEWEST_MODELED_JSDOM to 31.

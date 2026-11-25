@@ -934,7 +934,10 @@ const NEWER_RULES31 = {
     return data === null ? null : makeRule(protos, 'CSSViewTransitionRule', sheet, parentRule, { data, types: null });
   },
 };
-const RAW_AT = /^@([\w-]+)/;
+// (the whole at-keyword: a name character or an escape after it makes
+// another name, so @font-feature-valuesé and @font-feature-values\41 are
+// unknown rules; #344 review)
+const RAW_AT = /^@([\w-]+)(?![\w\u0080-\uffff\\-])/;
 const newerRule31 = (at) => (Object.hasOwn(NEWER_RULES31, at) ? NEWER_RULES31[at] : null);
 
 // The own length getter and indexed getters of a CSSKeyframesRule in jsdom

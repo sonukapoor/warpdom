@@ -434,12 +434,12 @@ parity(
         '@font-feature-values A { @"x" { c: 3 } @ swash { b: 2 } @styleset { d: 1 } }',
         '@font-feature-values A { 1 (;) @styleset { d: 1 } }',
         '@font-feature-values A { font-display: swap { } ; @styleset { d: 1 } }',
-        '@font-feature-values  A { }',
+        '@font-feature-values \u00a0A { }',
         '@position-try --\\70 { top: 1px } @position-try --f\\6f o { top: 1px }',
         '@position-try --a\\ b { top: 1px } @position-try --\\31 { top: 1px }',
         '@position-try -- { top: 1px } @position-try --a b { top: 1px } @position-try a { top: 1px }',
         '@font-palette-values --\\70 { font-family: A } @font-palette-values --a\\ b { font-family: A }',
-        '@font-palette-values --p { font-family:  A }',
+        '@font-palette-values --p { font-family: \u00a0A }',
         '@font-palette-values --p { font-family: A; override-colors: 0 red; override-colors: 0 inherit }',
         '@font-palette-values --p { font-family: A; override-colors: 0 red; override-colors: 0 initial }',
         '@font-palette-values --p { font-family: A; override-colors: 0 red; override-colors: 0 unset, 1 blue }',
@@ -454,7 +454,7 @@ parity(
     style.textContent = '@font-feature-values A { }';
     w.document.head.append(style);
     const rule = style.sheet.cssRules[0];
-    for (const family of [' A', 'A B', 'A　B,  C']) {
+    for (const family of ['\u00a0A', 'A\u00a0B', 'A\u3000B, \u2003C']) {
       rule.fontFamily = family;
       out.push([family, rule.fontFamily, rule.cssText]);
     }
@@ -472,13 +472,16 @@ parity(
       [
         '@font-feature-values/**/A {} @font-feature-values /**/B {}',
         '@position-try --a/**/b { top: 1px } @font-palette-values --a/**/b { font-family: A }',
-        '@position-try --a  { top: 1px } @font-palette-values --a  { font-family: A }',
+        '@position-try --a\u00a0 { top: 1px } @font-palette-values --a\u00a0 { font-family: A }',
         '@position-try --a\\  { top: 1px } @font-palette-values --a\\  { font-family: A }',
         '@position-try /**/--a { top: 1px }',
-        '@view-transition   { navigation: auto } @view-transition /**/ { navigation: none }',
+        '@view-transition \u00a0 { navigation: auto } @view-transition /**/ { navigation: none }',
         '@view-transition/**/{ navigation: auto } @VIEW-TRANSITION { navigation: none }',
-        '@starting-style   { a {} } @starting-style /**/ { b {} } @starting-style{c{}}',
-        '@font-feature-values A\\  { } @font-feature-values B  { }',
+        '@starting-style \u00a0 { a {} } @starting-style /**/ { b {} } @starting-style{c{}}',
+        '@font-feature-values A\\  { } @font-feature-values B\u00a0 { }',
+        '@font-feature-values\u00c4 {} @font-feature-values\u00e9 A {} @font-feature-values\u00a0A {}',
+        '@font-feature-values\\  A {} @font-feature-values\\41 {} @font-feature-values\u{1f600} A {}',
+        '@font-feature-values"A" {} @position-try--a { top: 1px } @view-transition{ navigation: auto }',
       ],
       (r) => r.name ?? r.fontFamily ?? r.navigation,
     ),
