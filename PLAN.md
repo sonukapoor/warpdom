@@ -8985,8 +8985,12 @@ color(srgb 0 0 1) in jsdom 31, warpdom keeps the text.
 Round 4 (2026-11-25): an escaped CSS-wide keyword or default
 (\69 nherit, \44 efault) was a <custom-ident>, in values too; container
 units (cqw, cqh, cqi, cqb, cqmin, cqmax) make an initial value dependent,
-as jsdom 31 has it (viewport units do not); resetWindow also forgets the
-document's tracked shadow roots, so a root the last file left registers
-nothing in the next.
+as jsdom 31 has it (viewport units do not), in blocks too (sign((1em)));
+resetWindow marks the tracked shadow roots it leaves out of the document
+as discarded (a WeakSet): their sheets register nothing in the next file
+until the root is connected again (its host put back), and a root still
+connected (the kept body's) keeps registering. (Decided 2026-11-25: a
+discarded root that is connected once is an ordinary root again, so out
+of the document later its adopted sheets count, as jsdom 31 has it.)
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.

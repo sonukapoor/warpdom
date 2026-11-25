@@ -397,6 +397,8 @@ function dependentUnits(list) {
   for (const tok of list) {
     if (tok.t === 'dimension' && DEPENDENT_UNITS.has(unitOf(tok))) return true;
     if (tok.args !== undefined && dependentUnits(tok.args)) return true;
+    // (a block's too: sign((1em)); #345 review)
+    if (tok.items !== undefined && dependentUnits(tok.items)) return true;
   }
   return false;
 }

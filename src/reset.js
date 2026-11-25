@@ -20,7 +20,7 @@
 // Made for running test files without isolation (Vitest --no-isolate):
 // files share modules but each starts with a fresh-looking DOM, which takes
 // a millisecond instead of a new window.
-import { S, insert, hooks, PlatformURL as URL } from './internal.js';
+import { S, connected, insert, hooks, PlatformURL as URL } from './internal.js';
 import { clearStorage } from './storage.js';
 import { clearCookies } from './cookies.js';
 import { clearWindowTimers, stopFrames } from './window-features.js';
@@ -165,9 +165,6 @@ export function resetWindow(window) {
   // (CSS.registerProperty's registrations, the Map the CSS namespace has;
   // #345 review)
   ws.registered31?.clear();
-  // (and the shadow roots whose sheets register: a root the last file
-  // left is no longer the document's; #345 review)
-  ds.shadowRoots31 = ds.shadowRootsSeen31 = ds.shadowRootsKept31 = undefined;
   // The next file starts without frames (pending callbacks dropped, the
   // beat's interval cleared).
   stopFrames(window);
@@ -253,5 +250,18 @@ export function resetWindow(window) {
     ds.selection[S].direction = 'none';
   }
   ds.ranges = undefined;
+  // jsdom 31: the shadow roots whose sheets register (cascade.js
+  // ruleRegistrations31). Those the last file left out of the document are
+  // discarded: their sheets register again only once the root is connected
+  // (its host put back). One still connected (the kept body's) stays
+  // (#345 review).
+  const roots = ds.shadowRoots31;
+  if (roots !== undefined) {
+    const discarded = (ds.shadowRootsReset31 ??= new WeakSet());
+    for (const ref of roots) {
+      const root = ref.deref();
+      if (root !== undefined && !connected(root[S].host)) discarded.add(root);
+    }
+  }
   return window;
 }

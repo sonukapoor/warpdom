@@ -847,6 +847,9 @@ parity(
       ['<length>', '1cqw'],
       ['<length>', '1cqmin'],
       ['<number>', 'sign(1cqb)'],
+      ['<number>', 'sign((1em))'],
+      ['<number>', 'sign((1cqw))'],
+      ['<number>', 'sign((1px))'],
       ['<length>', '1vw'],
       ['<length>', '1px'],
     ]) {

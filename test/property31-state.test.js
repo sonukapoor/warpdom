@@ -1,7 +1,8 @@
 // jsdom 31's registered custom properties: warpdom's own state for them
 // (#269 part F2, #345 review). resetWindow drops CSS.registerProperty's
-// registrations and the shadow roots the last file left, and a shadow
-// root a host brings back to a document is tracked once.
+// registrations, and the shadow roots the last file left out of the
+// document register nothing until connected again; a shadow root a host
+// brings back to a document is tracked once.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWindow } from '../src/node.js';
@@ -50,4 +51,28 @@ test('resetWindow drops the shadow roots whose sheets registered: a root the las
   resetWindow(w);
   assert.equal(read(), '');
   assert.equal(root.adoptedStyleSheets.length, 1);
+  // (put back, its host connected, it registers again; out again, its
+  // adopted sheets count as any detached root's do)
+  d.body.append(host);
+  assert.equal(read(), '1px');
+  host.remove();
+  assert.equal(read(), '1px');
+});
+
+test("resetWindow keeps a shadow root still connected registering: the kept body's", () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  snapshotWindow(w);
+  const d = w.document;
+  const root = d.body.attachShadow({ mode: 'open' });
+  const sheet = new w.CSSStyleSheet();
+  sheet.replaceSync('@property --a { syntax: "<length>"; inherits: false; initial-value: 1px; }');
+  root.adoptedStyleSheets = [sheet];
+  const style = d.createElement('style');
+  style.textContent = '@property --b { syntax: "<length>"; inherits: false; initial-value: 2px; }';
+  root.append(style);
+  const read = (name) => w.getComputedStyle(d.body).getPropertyValue(name);
+  assert.deepEqual([read('--a'), read('--b')], ['1px', '2px']);
+  resetWindow(w);
+  assert.equal(d.body.shadowRoot, root);
+  assert.deepEqual([read('--a'), read('--b')], ['1px', '2px']);
 });
