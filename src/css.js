@@ -60,6 +60,14 @@ import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand
 import { canonical31 } from './declared31.js';
 import { closed31, parseDeclarationList31, parseValue31, trimmed31 } from './parse31.js';
 import { hasVarReference } from './var-substitution.js';
+import {
+  UNIVERSAL,
+  independent31,
+  initialText31,
+  parseSyntax31,
+  registrations31,
+  universalInitial31,
+} from './property31.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -4968,13 +4976,16 @@ function supports31(args, matchesSelector, declaration) {
   return hold(parseSupports31(text)) || hold(parseSupports31(`(${text})`));
 }
 
-export function cssNamespace(matchesSelector, declaration31 = null) {
+// registered31: jsdom 31's registrations (a Map, cascade.js reads it), for
+// CSS.registerProperty.
+export function cssNamespace(matchesSelector, declaration31 = null, registered31 = null) {
   const namespace = {
     escape(ident) {
       if (arguments.length === 0)
         throw new TypeError("Failed to execute 'escape' on 'CSS': 1 argument required, but only 0 present.");
       return escapeIdentifier(ident);
     },
+    ...(registered31 === null ? {} : { registerProperty: registerProperty31(registered31) }),
     supports(...args) {
       if (args.length === 0)
         throw new TypeError("Failed to execute 'supports' on 'CSS': 1 argument required, but only 0 present.");
@@ -4987,6 +4998,64 @@ export function cssNamespace(matchesSelector, declaration31 = null) {
   };
   Object.defineProperty(namespace, Symbol.toStringTag, { value: 'CSS', configurable: true });
   return namespace;
+}
+
+// CSS.registerProperty() as jsdom 31 has it (black box, 31.0.1; #269 part
+// F2): the definition's members read in order (inherits, initialValue,
+// name, syntax); inherits defaults to true and syntax to *; the name,
+// then that it is new, then the syntax, then the initial value are
+// checked. A syntax other than * takes no initial value too (jsdom 31's,
+// not the spec's: the property then has none); one given must match it
+// and be computationally independent (property31.js).
+function registerProperty31(registered) {
+  return {
+    registerProperty(definition) {
+      if (arguments.length === 0)
+        throw new TypeError("Failed to execute 'registerProperty' on 'CSS': 1 argument required, but only 0 present.");
+      if (
+        definition !== undefined &&
+        definition !== null &&
+        typeof definition !== 'object' &&
+        typeof definition !== 'function'
+      )
+        throw new TypeError("Failed to execute 'registerProperty' on 'CSS': parameter 1 is not an object.");
+      const members = definition ?? {};
+      const inherits = members.inherits;
+      const initialValue = members.initialValue;
+      const initial = initialValue === undefined ? undefined : String(initialValue);
+      const nameValue = members.name;
+      if (nameValue === undefined) throw new TypeError("name is required in 'PropertyDefinition'");
+      const name = String(nameValue);
+      const syntaxValue = members.syntax;
+      const syntaxText = syntaxValue === undefined ? '*' : String(syntaxValue);
+      if (!name.startsWith('--') || name.length < 3)
+        throw domError(
+          `Custom property name "${name}" must start with "--" and contain at least one more character.`,
+          'SyntaxError',
+        );
+      if (registered.has(name))
+        throw domError(`Custom property "${name}" is already registered.`, 'InvalidModificationError');
+      const syntax = parseSyntax31(syntaxText);
+      if (syntax === null) throw domError(`Invalid syntax descriptor for custom property "${name}".`, 'SyntaxError');
+      let text = null;
+      if (initial !== undefined) {
+        // (comments kept: a/**/b)
+        text = initialText31(initial, true);
+        if (syntax === UNIVERSAL) {
+          if (parseValue31(initial, true) === null || !universalInitial31(text))
+            throw domError(`Invalid initial value for custom property "${name}" with universal syntax.`, 'SyntaxError');
+        } else if (!independent31(syntax, text))
+          throw domError(
+            `The initial value for custom property "${name}" must match its syntax and be computationally independent.`,
+            'SyntaxError',
+          );
+      }
+      registered.set(name, { syntax, inherits: inherits === undefined ? true : Boolean(inherits), initial: text });
+      registrations31.registered = true;
+      // (the cascade's indexes, and every value computed, are made again)
+      cssomChanges.rev++;
+    },
+  }.registerProperty;
 }
 
 export function computedStyle(element, proto) {

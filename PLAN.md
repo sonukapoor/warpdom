@@ -8865,3 +8865,75 @@ U+FFFD in a name. (jsdom 31 also logs "Could not parse CSS stylesheet"
 for a sheet left open at the end; not modeled.)
 Next: F2 (@property and registered custom properties), F3 (the smaller
 details), then NEWEST_MODELED_JSDOM to 31.
+
+## 2026-11-25: jsdom 31, CSS part F2: registered custom properties (branch feat/269-jsdom31-property, #269)
+
+jsdom 31 has @property rules (CSSPropertyRule) and CSS.registerProperty,
+and computes a registered custom property by its syntax; jsdom 20 to 30
+have neither (the rule is dropped, the property is a plain custom one).
+Behavior (jsdom 31 profile only; black box, 31.0.1; property31.js, the
+rule in rules31.js, registerProperty in css.js, the cascade in
+cascade.js; test/property31.test.js):
+- CSSPropertyRule (type 0): name, names (jsdom's own: the same array each
+  time), syntax, inherits, initialValue. Its prelude is one dashed name
+  or a comma list of them (name is then '', every name registers). Its
+  block reads as a list of declarations and rules (a declaration whose
+  value is a {} block alone is one: initial-value: {a}; parse31.js
+  blockDeclarationEnd). Each descriptor has a default (syntax *, inherits
+  true, no initial value) and is not required: jsdom keeps the rule and
+  writes the defaults in cssText. syntax and inherits: the last valid
+  one; initial-value: the last one, kept when it matches the syntax and
+  is computationally independent (no em, rem, ex, ch, lh, ... nor var();
+  vw and currentcolor are fine), written token by token (whitespace runs
+  one space, none at a block's ends; comments dropped; numbers as numbers,
+  1E3px is 1000px; strings in double quotes).
+- The syntax: * alone, or components joined by | (written " | "): one of
+  15 data type names (<length>, <color>, ..., <transform-list> without a
+  multiplier), as written, or an identifier but the CSS-wide keywords and
+  default; + or # after each. Invalid in a rule: *.
+- CSS.registerProperty(definition): members read inherits, initialValue,
+  name, syntax; inherits defaults to true, syntax to *; checked in order:
+  the name (starts with -- and has more), new, the syntax, the initial
+  value (none is fine for any syntax, unlike the spec; with * it must be
+  a value but no CSS-wide keyword or var()), each with jsdom's message.
+  It wins over every rule.
+- The cascade: CSS.registerProperty's registrations, else the @property
+  rules of the sheets that apply (conditions hold; @layer too; not in a
+  style rule; the document's <style> and adopted sheets, then each shadow
+  root's, a shadow root's adopted sheets out of the document too); a
+  later rule for a name wins. A registered property inherits or not as
+  registered, has its initial value (computed), and computes its value
+  by the syntax: lengths px (em and the other relative units from the
+  element), percentages, numbers six digits, integers rounded from a
+  calculation, angles deg, times s, resolutions dppx, colors as color
+  computes them (currentcolor the element's color), urls absolute,
+  strings in double quotes, identifiers as written, lists with one space
+  or a comma and space; a value matching none (after var() substitution)
+  is unset. A plain 0 is a <number> first (0 for <length> | <number>).
+  The computed style lists a registered name when it has a value.
+Not modeled: the order between two shadow trees' rules for one name
+(jsdom 31: by when each tree last got a sheet after having none; warpdom:
+by when the shadow roots were attached; 2 of 13 probes differ); the
+differences on regular properties found on the way (computed angles,
+times, transform lengths and bare calc() results, a computed url() made
+absolute) stay for F3.
+Design: the registry is per document, rebuilt when its tree, style text
+or CSSOM changes, from a walk of the sheets' rules (no selectors
+compiled; a sheet without an @property rule is skipped until the CSSOM
+changes). Nothing is looked up until a rule is made or registerProperty
+is called (property31.js registrations31), or a shadow tree has a <style>
+whose sheet is not made yet (made when read: internal.js sheetCreated
+sets shadowStyles31). Shadow roots are listed per document when attached,
+held through WeakRefs. registerProperty bumps the CSSOM counter, so every
+index and cached value is made again.
+Benchmarks (Node 22.17.1, interleaved against main 3db43a9, medians):
+custom property reads after a tree change, jsdom 31 profile, 4000 x 20
+reads: 121.6 -> 123.9 ms (noise; 7.5% slower before the registry gate
+moved inline, profiled: three symbol lookups per read); with 20 shadow
+roots, 1000 x 20: 75.4 -> 76.5 ms (11% slower before the gate); sheet
+parsing (bench-parse, 400 sheets): 181.6 -> 182.5 ms. Cold load 30.7 ->
+31.5 ms (+0.8 ms, 5 runs each order): the new module and the registry
+code (src/ is 34 KB larger); kept, as @property is jsdom 31 behavior
+tests can observe and a synchronous core cannot load it later.
+Next: F3 (the smaller details, the regular-property differences above),
+then NEWEST_MODELED_JSDOM to 31.

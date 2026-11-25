@@ -792,6 +792,10 @@ function adoptTree(node, oldDoc, doc) {
         adopted.items.length = 0;
         cssomChanges.rev++;
       }
+      // (jsdom 31: its sheets' @property rules register for this one,
+      // cascade.js ruleRegistrations31)
+      if (oldDoc !== doc && doc[S].window?.[S].compat.computed31)
+        (doc[S].shadowRoots31 ??= []).push(new WeakRef(s.shadowRoot));
       adoptTree(s.shadowRoot, oldDoc, doc);
     }
   }
@@ -1096,6 +1100,9 @@ function styleTextChanged(node) {
 }
 function sheetCreated(s, node) {
   if (s.ns !== HTML_NS) return;
+  // (jsdom 31: a shadow tree's sheet is made when read, and may register
+  // @property rules; cascade.js registration31)
+  if (rootOf(node)[S].shadow === true) s.doc[S].shadowStyles31 = true;
   s.sheetStamp = ++sheetStamps;
   s.sheetRev = -1;
   if (s.doc[S].sheetOrder !== undefined || shadowSheets(s.doc)) orderSheet(s, node);
