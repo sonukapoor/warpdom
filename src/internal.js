@@ -404,6 +404,21 @@ export function platformGlobal(name) {
   };
 }
 
+// jsdom 31: a document's shadow roots, held weakly, whose sheets'
+// @property rules register (cascade.js ruleRegistrations31); the list is
+// pruned of roots gone once it doubles (#345 review). Its sheets may be
+// unread yet (styles31).
+export function trackShadowRoot31(ds, root) {
+  const roots = (ds.shadowRoots31 ??= []);
+  if (roots.length >= 2 * (ds.shadowRootsKept31 ?? 0) + 16) {
+    let live = 0;
+    for (const ref of roots) if (ref.deref() !== undefined) roots[live++] = ref;
+    roots.length = ds.shadowRootsKept31 = live;
+  }
+  roots.push(new WeakRef(root));
+  ds.styles31 = true;
+}
+
 // DOMException is a web standard global (browsers, Node, Deno, edge runtimes).
 export function domError(message, name) {
   return new DOMException(message, name);
@@ -794,8 +809,7 @@ function adoptTree(node, oldDoc, doc) {
       }
       // (jsdom 31: its sheets' @property rules register for this one,
       // cascade.js ruleRegistrations31)
-      if (oldDoc !== doc && doc[S].window?.[S].compat.computed31)
-        (doc[S].shadowRoots31 ??= []).push(new WeakRef(s.shadowRoot));
+      if (oldDoc !== doc && doc[S].window?.[S].compat.computed31) trackShadowRoot31(doc[S], s.shadowRoot);
       adoptTree(s.shadowRoot, oldDoc, doc);
     }
   }
@@ -1100,9 +1114,9 @@ function styleTextChanged(node) {
 }
 function sheetCreated(s, node) {
   if (s.ns !== HTML_NS) return;
-  // (jsdom 31: a shadow tree's sheet is made when read, and may register
-  // @property rules; cascade.js registration31)
-  if (rootOf(node)[S].shadow === true) s.doc[S].shadowStyles31 = true;
+  // (jsdom 31: its sheet is made when read, and may register @property
+  // rules; cascade.js registration31)
+  s.doc[S].styles31 = true;
   s.sheetStamp = ++sheetStamps;
   s.sheetRev = -1;
   if (s.doc[S].sheetOrder !== undefined || shadowSheets(s.doc)) orderSheet(s, node);

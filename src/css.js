@@ -60,6 +60,7 @@ import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand
 import { canonical31 } from './declared31.js';
 import { closed31, parseDeclarationList31, parseValue31, trimmed31 } from './parse31.js';
 import { hasVarReference } from './var-substitution.js';
+import { documentBaseURL } from './base-url.js';
 import {
   UNIVERSAL,
   independent31,
@@ -4978,24 +4979,38 @@ function supports31(args, matchesSelector, declaration) {
 
 // registered31: jsdom 31's registrations (a Map, cascade.js reads it), for
 // CSS.registerProperty.
-export function cssNamespace(matchesSelector, declaration31 = null, registered31 = null) {
-  const namespace = {
-    escape(ident) {
-      if (arguments.length === 0)
-        throw new TypeError("Failed to execute 'escape' on 'CSS': 1 argument required, but only 0 present.");
-      return escapeIdentifier(ident);
-    },
-    ...(registered31 === null ? {} : { registerProperty: registerProperty31(registered31) }),
-    supports(...args) {
-      if (args.length === 0)
-        throw new TypeError("Failed to execute 'supports' on 'CSS': 1 argument required, but only 0 present.");
-      if (declaration31 !== null) return supports31(args, matchesSelector, declaration31);
-      if (args.length >= 2) return supportsDeclaration(args[0], args[1]);
-      const text = String(args[0]);
-      // A bare declaration is treated as if wrapped in parentheses.
-      return supportsCondition(text, matchesSelector) || supportsCondition(`(${text})`, matchesSelector);
-    },
+export function cssNamespace(matchesSelector, declaration31 = null, register31 = null) {
+  const supports = (args) => {
+    if (args.length === 0)
+      throw new TypeError("Failed to execute 'supports' on 'CSS': 1 argument required, but only 0 present.");
+    if (declaration31 !== null) return supports31(args, matchesSelector, declaration31);
+    if (args.length >= 2) return supportsDeclaration(args[0], args[1]);
+    const text = String(args[0]);
+    // A bare declaration is treated as if wrapped in parentheses.
+    return supportsCondition(text, matchesSelector) || supportsCondition(`(${text})`, matchesSelector);
   };
+  // (jsdom 31's keys in order: escape, registerProperty, supports)
+  const namespace =
+    register31 === null
+      ? {
+          escape(ident) {
+            return escaped(arguments.length, ident);
+          },
+          supports(...args) {
+            return supports(args);
+          },
+        }
+      : {
+          escape(ident) {
+            return escaped(arguments.length, ident);
+          },
+          registerProperty(definition) {
+            registerProperty31(register31, arguments.length, definition);
+          },
+          supports(...args) {
+            return supports(args);
+          },
+        };
   Object.defineProperty(namespace, Symbol.toStringTag, { value: 'CSS', configurable: true });
   return namespace;
 }
@@ -5007,10 +5022,26 @@ export function cssNamespace(matchesSelector, declaration31 = null, registered31
 // checked. A syntax other than * takes no initial value too (jsdom 31's,
 // not the spec's: the property then has none); one given must match it
 // and be computationally independent (property31.js).
-function registerProperty31(registered) {
-  return {
-    registerProperty(definition) {
-      if (arguments.length === 0)
+function escaped(count, ident) {
+  if (count === 0) throw new TypeError("Failed to execute 'escape' on 'CSS': 1 argument required, but only 0 present.");
+  return escapeIdentifier(ident);
+}
+// (WebIDL's DOMString conversion: a Symbol is refused; #345 review)
+function domString31(value, member) {
+  if (typeof value === 'symbol')
+    throw new TypeError(
+      `Failed to execute 'registerProperty' on 'CSS': parameter 1's '${member}' member is a symbol, which cannot be converted to a string.`,
+    );
+  return String(value);
+}
+// register: { registered (the Map cascade.js reads), document() (the
+// window's document: its base URL resolves a typed initial value's urls
+// now, and its computed values are made again) }.
+function registerProperty31(register, count, definition) {
+  const registered = register.registered;
+  {
+    {
+      if (count === 0)
         throw new TypeError("Failed to execute 'registerProperty' on 'CSS': 1 argument required, but only 0 present.");
       if (
         definition !== undefined &&
@@ -5022,12 +5053,12 @@ function registerProperty31(registered) {
       const members = definition ?? {};
       const inherits = members.inherits;
       const initialValue = members.initialValue;
-      const initial = initialValue === undefined ? undefined : String(initialValue);
+      const initial = initialValue === undefined ? undefined : domString31(initialValue, 'initialValue');
       const nameValue = members.name;
       if (nameValue === undefined) throw new TypeError("name is required in 'PropertyDefinition'");
-      const name = String(nameValue);
+      const name = domString31(nameValue, 'name');
       const syntaxValue = members.syntax;
-      const syntaxText = syntaxValue === undefined ? '*' : String(syntaxValue);
+      const syntaxText = syntaxValue === undefined ? '*' : domString31(syntaxValue, 'syntax');
       if (!name.startsWith('--') || name.length < 3)
         throw domError(
           `Custom property name "${name}" must start with "--" and contain at least one more character.`,
@@ -5050,12 +5081,20 @@ function registerProperty31(registered) {
             'SyntaxError',
           );
       }
-      registered.set(name, { syntax, inherits: inherits === undefined ? true : Boolean(inherits), initial: text });
+      const doc = register.document();
+      registered.set(name, {
+        syntax,
+        inherits: inherits === undefined ? true : Boolean(inherits),
+        initial: text,
+        base: documentBaseURL(doc),
+      });
       registrations31.registered = true;
-      // (the cascade's indexes, and every value computed, are made again)
+      // (the cascade's indexes, and every value computed, are made again:
+      // the document's too when it has no sheets; #345 review)
       cssomChanges.rev++;
-    },
-  }.registerProperty;
+      doc[S].treeRev = (doc[S].treeRev ?? 0) + 1;
+    }
+  }
 }
 
 export function computedStyle(element, proto) {

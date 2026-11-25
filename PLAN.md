@@ -8935,5 +8935,28 @@ parsing (bench-parse, 400 sheets): 181.6 -> 182.5 ms. Cold load 30.7 ->
 31.5 ms (+0.8 ms, 5 runs each order): the new module and the registry
 code (src/ is 34 KB larger); kept, as @property is jsdom 31 behavior
 tests can observe and a synchronous core cannot load it later.
+Review (#345, round 1; each probed against 31.0.1 first): a registered
+value read back through another property (--a: 2em; font-size: var(--a);
+currentcolor with color: var(--a); 1lh with line-height) overflowed the
+stack: both are in a cycle now, the registered one unset and the other
+property invalid for the element's values (cascade.js typedValue31,
+cycles31); length calculations jsdom resolves (round(1.5px, 1px), abs(),
+round(1.5em, 1px) after its em) go through calc31's simplification;
+<integer> rounds the calculation's value (calc(1.499999) is 1,
+calc(infinity) 9007200000000000); comments in a value are spaces when
+matching; initial values keep hashes (#000) and unquoted urls
+(url(icons/001.png)) as written; var() checks are token-aware (a string
+"var(--m)" is fine, \76 ar(--b) is a reference); fragment and empty urls
+stay; a typed initial value's urls resolve from the base URL when
+registered (registerProperty) or first read (a rule); registerProperty
+refuses a Symbol member as WebIDL's DOMString conversion does; in
+@property's block initial-value takes any value up to its ; ({a} b),
+another descriptor with a {} block is a rule; registering bumps the
+document's tree counter too (a document without sheets kept its values).
+The gate is now any <style> whose sheet may not be read yet (the
+document's too: a shadow tree read first skipped a document rule), set
+in internal.js sheetCreated and cleared by the registry. Benchmarks after
+(same setup, 5 runs, medians): 38.4 -> 39.6 ms (0 roots), 74.0 -> 74.2 ms
+(20 roots), a <style> added per read 39.8 -> 39.7 ms.
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.

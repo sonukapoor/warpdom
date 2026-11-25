@@ -400,10 +400,13 @@ function propertyNames(prelude) {
 export function propertyRule(prelude, body) {
   const names = propertyNames(prelude);
   if (names === null) return null;
-  const data = { names, syntax: UNIVERSAL, inherits: true, initial: null };
+  // (base: the document's base URL when the cascade first reads it, which
+  // resolves a typed initial value's urls; cascade.js)
+  const data = { names, syntax: UNIVERSAL, inherits: true, initial: null, base: null };
   let initial = null;
   // (a list of declarations and rules: a block before a ; is a rule)
-  for (const decl of parseDeclarationList31(body, [])) {
+  // (initial-value takes any value, a {} block too: initial-value: {a} b)
+  for (const decl of parseDeclarationList31(body, [], 'initial-value')) {
     const key = decl.name.toLowerCase();
     if (key === 'initial-value') {
       initial = decl;

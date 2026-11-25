@@ -18,6 +18,7 @@ import {
   textOf,
   contains,
   domError,
+  trackShadowRoot31,
   rootOf,
   nextInTree,
   childArray,
@@ -594,7 +595,7 @@ function attachShadow(element, init) {
     ds.treeRev = (ds.treeRev ?? 0) + 1;
     // (its sheets' @property rules register: cascade.js ruleRegistrations31;
     // held weakly, a test's shadow roots come and go)
-    (ds.shadowRoots31 ??= []).push(new WeakRef(shadow));
+    trackShadowRoot31(ds, shadow);
   }
   return shadow;
 }

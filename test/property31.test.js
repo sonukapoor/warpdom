@@ -55,17 +55,27 @@ const valuesOf = (w, text, names = ['--a']) => {
 const P = (syntax, inherits, initial) =>
   `@property --a { syntax: "${syntax}"; inherits: ${inherits};${initial === undefined ? '' : ` initial-value: ${initial};`} }`;
 
-// (first: before any @property rule is made in this process, a shadow
-// tree's <style> sheet, made only when read, still registers; cascade.js
-// registration31)
+// (first: before any @property rule is made in this process, sheets made
+// only when read still register: a shadow tree's <style>, and one of a
+// shadow tree moved in from another document; cascade.js registration31,
+// #345 review. test/property31-unread.test.js has a document's own.)
 parity(
   "a shadow tree's <style> registers before anything reads its sheet",
   (w) => {
     const get = tree(w);
-    const host = w.document.getElementById('c');
+    const d = w.document;
+    const other = d.implementation.createHTMLDocument('');
+    const moved = other.createElement('div');
+    other.body.append(moved);
+    moved.attachShadow({ mode: 'open' }).innerHTML =
+      '<style>@property --m { syntax: "<length>"; inherits: false; initial-value: 7px; }</style>';
+    d.getElementById('c').append(moved);
+    const out = [get('p', '--m'), get('c', '--m')];
+    const host = d.getElementById('c');
     host.attachShadow({ mode: 'open' }).innerHTML =
       '<style>@property --a { syntax: "<length>"; inherits: false; initial-value: 2px; }</style><i></i>';
-    return [get('p', '--a'), get('c', '--a'), [...w.getComputedStyle(w.document.getElementById('p'))].slice(-1)];
+    out.push(get('p', '--a'), get('c', '--a'), [...w.getComputedStyle(d.getElementById('p'))].slice(-2));
+    return out;
   },
   { jsdom: 31 },
 );
@@ -600,6 +610,123 @@ parity(
     out.push(w.getComputedStyle(d.createElement('div')).getPropertyValue('--m'));
     out.push(w.getComputedStyle(d.documentElement).getPropertyValue('--m'));
     return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'registering in a document without sheets drops what was computed (#345 review)',
+  (w) => {
+    const get = tree(w);
+    const e = w.document.getElementById('p');
+    e.style.setProperty('--a', 'var(--missing, 2em)');
+    e.style.fontSize = '10px';
+    const names = () => [...w.getComputedStyle(e)].filter((n) => n.startsWith('--'));
+    const before = [get('p', '--a'), names()];
+    w.CSS.registerProperty({ name: '--a', syntax: '<length>', inherits: false, initialValue: '0px' });
+    w.CSS.registerProperty({ name: '--m', syntax: '<length>', inherits: false, initialValue: '1px' });
+    return [before, get('p', '--a'), names()];
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'registered values: cycles through other properties, math functions, comments, integers (#345 review)',
+  (w) =>
+    [
+      P('<length>', false, '1px') + '#p { --a: 2em; font-size: var(--a) }',
+      P('<length>', false, '1px') + '#p { --a: 2em; font-size: 10px }',
+      P('<color>', false, 'red') + '#p { --a: currentcolor; color: var(--a) }',
+      P('<length>', false, '1px') + '#p { --a: 1lh; line-height: var(--a) }',
+      P('<length>', false, '1px') + '#p { --a: abs(-1px) }',
+      P('<length>', false, '1px') + '#p { --a: round(1.5px, 1px) }',
+      P('<length>', false, 'abs(-3px)'),
+      P('<length>', false, '1px') + '#p { font-size: 10px; --a: round(1.5em, 1px) }',
+      P('<length>', false, '1px') + '#p { --a: abs(-10%) }',
+      P('<number>', false, '0') + '#p { --a: sign(-3px) }',
+      P('<integer>', false, '0') + '#p { --a: calc(1.499999) }',
+      P('<integer>', false, '0') + '#p { --a: calc(infinity) }',
+      P('<integer>', false, '0') + '#p { --a: calc(-2.5) }',
+      P('<color>', false, '#0000ff'),
+      P('<url>', false, 'url(a.png)') + '#p { --a: url("#icon") }',
+      P('<url>', false, 'url(a.png)') + '#p { --a: url("") }',
+      P('<url>', false, 'url(icons/001.png)'),
+    ].map((text) => [
+      text,
+      (() => {
+        const get = tree(w);
+        const style = sheet(w, text);
+        const out = [
+          get('p', '--a'),
+          get('c', '--a'),
+          ...['font-size', 'color', 'line-height'].map((n) => get('p', n)),
+        ];
+        style.remove();
+        return out;
+      })(),
+    ]),
+  { jsdom: 31 },
+);
+
+parity(
+  'initial values: hashes, urls, strings, var() and blocks; values with comments (#345 review)',
+  (w) => {
+    const get = tree(w);
+    const rules = [
+      P('<color>', false, '#000'),
+      P('<color>', false, '#0000ff'),
+      P('*', false, '#012'),
+      P('<string>', false, '"var(--m)"'),
+      P('<url>', false, 'url(icons/001.png)'),
+      P('*', false, 'url(icons/001.png)'),
+      P('*', false, 'url( a.png )'),
+      '@property --a { initial-value: {a}{b}; }',
+      '@property --a { initial-value: {a} b; inherits: false }',
+      '@property --a { initial-value: a {b}; inherits: false }',
+      '@property --a { initial-value: {a} syntax: "<length>"; inherits: false }',
+      '@property --a { x: 1 {a} inherits: false; }',
+      '@property --a { syntax: {a} inherits: false; }',
+      '@property --a { inherits: false {a}; }',
+    ].map((text) => [text, ruleOf(w, text)]);
+    const reg = (definition) => attempt(() => w.CSS.registerProperty(definition));
+    const registered = [
+      reg({ name: '--h', syntax: '<color>', inherits: false, initialValue: '#000' }),
+      reg({ name: '--h2', syntax: '*', inherits: false, initialValue: '#0001 1e1' }),
+      reg({ name: '--c', syntax: '<length>', inherits: false, initialValue: '1px /* note */' }),
+      reg({ name: '--s', syntax: '<string>', inherits: false, initialValue: '"var(--m)"' }),
+      reg({ name: '--s2', syntax: '*', inherits: false, initialValue: '"var(--m)"' }),
+      reg({ name: '--v', syntax: '*', inherits: false, initialValue: '\\76 ar(--b)' }),
+      reg({ name: '--v2', syntax: '*', inherits: false, initialValue: 'var(--b)' }),
+      reg({ name: '--y', syntax: '*', inherits: false, initialValue: Symbol('x') }),
+      reg({ name: '--y', syntax: '*', inherits: false, initialValue: 'x' }),
+      reg({ name: Symbol('x') }),
+      reg({ name: '--z', syntax: Symbol('x') }),
+    ];
+    const e = w.document.getElementById('p');
+    const values = ['--h', '--h2', '--c', '--s', '--s2', '--y'].map((n) => get('p', n));
+    sheet(w, '@property --l { syntax: "<length>+"; inherits: false; initial-value: 1px; }');
+    e.style.setProperty('--l', '3px /* n */');
+    values.push(get('p', '--l'));
+    e.style.setProperty('--l', '3px/**/4px');
+    values.push(get('p', '--l'));
+    return [rules, registered, values];
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "a typed initial value's urls resolve from the base URL when it is registered (#345 review)",
+  (w) => {
+    const get = tree(w);
+    const d = w.document;
+    const base = d.createElement('base');
+    base.href = 'https://example.test/a/';
+    d.head.append(base);
+    w.CSS.registerProperty({ name: '--r', syntax: '<url>', inherits: false, initialValue: 'url(icon.png)' });
+    sheet(w, '@property --s { syntax: "<url>"; inherits: false; initial-value: url(icon.png); }');
+    const before = get('p', '--s');
+    base.href = 'https://example.test/b/';
+    return [before, get('p', '--r'), get('p', '--s')];
   },
   { jsdom: 31 },
 );

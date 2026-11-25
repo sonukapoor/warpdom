@@ -24,6 +24,7 @@ import { isLengthUnit, isMathFunction, isValidValue, readEscapes, tokenizeValue 
 import { mathType, mathValue, simplifyMath } from './calc31.js';
 import { sixDigits } from './lengths.js';
 import { cssString } from './css.js';
+import { hasVarReference } from './var-substitution.js';
 
 // Whether anything may be registered, in any window: an @property rule was
 // made (cssom.js), or CSS.registerProperty was called (css.js). Until then
@@ -90,10 +91,11 @@ export function parseSyntax31(text) {
 // whitespace runs one space (none at the ends, after an opening bracket
 // or before a closing one), numbers as numbers (1e1 is 10, +.5 0.5, 1E3PX
 // 1000px), strings in double quotes; comments dropped (a style sheet's),
-// or kept (registerProperty's).
+// or kept (registerProperty's); a hash and an unquoted url() as written
+// (#000, url(icons/001.png); #345 review).
 const NAME_RUN = String.raw`(?:[\w\u0080-￿-]|\\[\s\S])`;
 const PIECE = new RegExp(
-  String.raw`([ \t\n\r\f]+)|(\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${NAME_RUN}*|%)|(${NAME_RUN}+)|([\s\S])`,
+  String.raw`([ \t\n\r\f]+)|(\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|([uU][rR][lL]\([ \t\n\r\f]*(?!["'])(?:[^)\\]|\\[\s\S])*\)?)|([+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?)(${NAME_RUN}*|%)|(#?${NAME_RUN}+)|([\s\S])`,
   'y',
 );
 const OPENS = new Set(['(', '[', '{']);
@@ -112,8 +114,11 @@ export function initialText31(text, keepComments) {
     if (m[2] !== undefined && !keepComments) continue;
     let piece = m[0];
     if (m[3] !== undefined) piece = cssString(stringValue(piece));
+    // (url( a.png ) is url(a.png))
+    else if (m[4] !== undefined)
+      piece = `${piece.slice(0, 4)}${piece.slice(4).replace(/\)$/, '').replace(CSS_SPACE, '')})`;
     // (a number, with its unit: 1E1PX is 10px; a1 is a name)
-    else if (m[4] !== undefined) piece = String(Number(m[4])) + (LETTERS.test(m[5]) ? m[5].toLowerCase() : m[5]);
+    else if (m[5] !== undefined) piece = String(Number(m[5])) + (LETTERS.test(m[6]) ? m[6].toLowerCase() : m[6]);
     if (space && out !== '' && !OPENS.has(out[out.length - 1]) && !CLOSES.has(piece)) out += ' ';
     space = false;
     out += piece;
@@ -141,6 +146,8 @@ function stringValue(token) {
 // The value as computed for the syntax, or null when it matches none of
 // its components.
 export function matchValue31(syntax, text, ctx) {
+  // (the tokens' positions are in the text without its comments)
+  if (text.includes('/*')) text = withoutComments(text);
   const list = tokenizeValue(text);
   if (list === null || list.length === 0) return null;
   // (numbers alone are numbers first: 0 for <length> | <number> is 0)
@@ -154,6 +161,29 @@ export function matchValue31(syntax, text, ctx) {
   }
   return null;
 }
+// The text with each comment outside strings and urls a space (1px /* a */
+// is 1px, 3px/**/4px two lengths; #345 review).
+function withoutComments(text) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      for (i++; i < text.length && text[i] !== c && text[i] !== '\n'; i++) if (text[i] === '\\') i++;
+    } else if (c === '\\') i++;
+    else if ((c === 'u' || c === 'U') && /^url\([ \t\n\r\f]*[^"' \t\n\r\f]/i.test(text.slice(i, i + 64))) {
+      const close = text.indexOf(')', i);
+      if (close === -1) break;
+      i = close;
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      out += `${text.slice(from, i)} `;
+      i = end === -1 ? text.length : end + 1;
+      from = i + 1;
+    }
+  }
+  return out + text.slice(from);
+}
 function matchPart(part, list, text, ctx) {
   if (part.type === 'transform-list') {
     const out = [];
@@ -165,25 +195,19 @@ function matchPart(part, list, text, ctx) {
     return out.join(' ');
   }
   if (part.mult === '') return list.length === 1 ? component(part, list[0], text, ctx) : null;
-  const items = part.mult === '+' ? list : commaItems(list);
-  if (items === null) return null;
-  const out = [];
-  for (const tok of items) {
-    const one = component(part, tok, text, ctx);
-    if (one === null) return null;
-    out.push(one);
-  }
-  return out.join(part.mult === '+' ? ' ' : ', ');
-}
-// The comma separated items, each one token (null else).
-function commaItems(list) {
-  if (list.length % 2 === 0) return null;
-  const out = [];
+  // (# : one token, then a comma and one token each time)
+  const commas = part.mult === '#';
+  if (commas && list.length % 2 === 0) return null;
+  let out = '';
   for (let i = 0; i < list.length; i++) {
-    if (i % 2 === 1) {
-      if (list[i].t !== 'comma') return null;
-    } else if (list[i].t === 'comma') return null;
-    else out.push(list[i]);
+    const tok = list[i];
+    if (commas && i % 2 === 1) {
+      if (tok.t !== 'comma') return null;
+      continue;
+    }
+    const one = tok.t === 'comma' ? null : component(part, tok, text, ctx);
+    if (one === null) return null;
+    out += i === 0 ? one : `${commas ? ', ' : ' '}${one}`;
   }
   return out;
 }
@@ -203,8 +227,7 @@ function component(part, tok, text, ctx) {
       return isMath(tok) && mathType(tok) === 'number' ? mathNumber(tok) : null;
     case 'integer':
       if (tok.t === 'number') return tok.int ? String(tok.v + 0) : null;
-      if (!isMath(tok) || mathType(tok) !== 'number') return null;
-      return ctx === INDEPENDENT ? '' : String(Math.round(Number(mathNumber(tok))) + 0);
+      return isMath(tok) && mathType(tok) === 'number' ? mathInteger(tok) : null;
     case 'percentage':
       if (tok.t === 'percentage') return `${sixDigits(tok.v)}%`;
       return isMath(tok) && mathType(tok) === 'percentage' ? single(tok, '%') : null;
@@ -243,10 +266,32 @@ function component(part, tok, text, ctx) {
 // A length (a 0 too) as px.
 function length(tok, source, ctx) {
   if (tok.t === 'number') return tok.v === 0 ? '0px' : null;
-  const fits = (tok.t === 'dimension' && isLengthUnit(tok.unit)) || (isMath(tok) && mathType(tok) === 'length');
-  if (!fits) return null;
-  const px = ctx.length(source);
-  return px === null ? null : `${sixDigits(px)}px`;
+  if (tok.t === 'dimension') {
+    if (!isLengthUnit(tok.unit)) return null;
+    const px = ctx.length(source);
+    return px === null ? null : `${sixDigits(px)}px`;
+  }
+  // (a calculation whose type its relative lengths decide: round(1.5em, 1px))
+  if (!isMath(tok)) return null;
+  const type = mathType(tok);
+  return type === 'length' || type === undefined ? mathLength(tok, source, ctx) : null;
+}
+// A calculation of lengths, its relative ones as px first, simplified as
+// jsdom 31 does (round(1.5px, 1px) is 2px, abs(-3px) 3px; #345 review);
+// one with a percentage is none.
+const PX = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?px$/i;
+function mathLength(tok, source, ctx) {
+  const resolved = ctx.resolve(source);
+  if (resolved === null) return null;
+  const list = tokenizeValue(resolved);
+  const out = list?.length === 1 ? simplifyMath(list[0], 'length') : null;
+  if (typeof out !== 'string') {
+    // (what the simplification does not read: the evaluator lengths.js has)
+    const px = out === undefined ? ctx.length(source) : null;
+    return px === null ? null : `${sixDigits(px)}px`;
+  }
+  const one = unwrapped(out);
+  return PX.test(one) ? `${sixDigits(Number(one.slice(0, -2)))}px` : null;
 }
 // A calculation of lengths and percentages: its relative lengths as px,
 // simplified (calc(10% + 1em) is calc(10% + 20px), calc(10% - 10%) 0%).
@@ -265,6 +310,14 @@ const unwrapped = (text) => (/^calc\([^ ()]+\)$/.test(text) ? text.slice(5, -1) 
 function mathNumber(tok) {
   const value = mathValue(tok);
   return value === null || value.unit !== '' || !Number.isFinite(value.v) ? null : sixDigits(value.v);
+}
+// An integer from a calculation of numbers: rounded, at most 2^53 - 1
+// (calc(1.499999) is 1, calc(infinity) 9007200000000000; #345 review).
+function mathInteger(tok) {
+  const value = mathValue(tok);
+  if (value === null || value.unit !== '' || Number.isNaN(value.v)) return null;
+  const n = Math.max(-Number.MAX_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, Math.round(value.v)));
+  return sixDigits(n + 0);
 }
 // A calculation of one unit, in that unit.
 function single(tok, unit) {
@@ -322,14 +375,16 @@ const INDEPENDENT = {
 };
 // Whether an initial value (written by initialText31) matches the
 // syntax and is computationally independent.
+// (var() as a reference, not in a string or escaped: hasVarReference;
+// #345 review)
 export function independent31(syntax, text) {
-  if (/var\(/i.test(text)) return false;
+  if (hasVarReference(text)) return false;
   return matchValue31(syntax, text, INDEPENDENT) !== null;
 }
 // A universal syntax's initial value: any value but a CSS-wide keyword
 // or one with var().
 export function universalInitial31(text) {
-  if (/var\(/i.test(text)) return false;
+  if (hasVarReference(text)) return false;
   const trimmed = text.replace(CSS_SPACE, '').toLowerCase();
   return !RESERVED.has(trimmed) || trimmed === 'default';
 }

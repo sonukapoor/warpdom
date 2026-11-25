@@ -345,8 +345,11 @@ const meaningful = (k) => TYPE[k] !== WS && TYPE[k] !== COMMENT;
 // block (the text inside its braces) }; each declaration then has its
 // value's text as written too (raw: comments kept, for @property's
 // initial-value; null otherwise).
+// anyValue: a declaration name (lowercase) whose value may have {} blocks
+// (@property's initial-value); another one with a {} block at its top
+// level is a rule.
 let keepRaw = false;
-export function parseDeclarationList31(text, atRules) {
+export function parseDeclarationList31(text, atRules, anyValue) {
   tokenize(text);
   keepRaw = atRules !== undefined;
   const out = [];
@@ -365,7 +368,7 @@ export function parseDeclarationList31(text, atRules) {
     // #344 review)
     let end;
     if (atRules !== undefined) {
-      end = type === IDENT ? blockDeclarationEnd(text, k) : -1;
+      end = type === IDENT ? blockDeclarationEnd(text, k, anyValue) : -1;
       if (end === -1) {
         end = atRuleEnd(text, k);
         if (type === AT) atRule(text, k, end, atRules);
@@ -384,28 +387,31 @@ export function parseDeclarationList31(text, atRules) {
 }
 
 // Where the declaration at k in a list of rules and declarations ends (its
-// ;), or -1 when it is none (CSS Syntax 3, consume a declaration: a name,
-// a colon, then a value that is a {} block alone or has none at its top
-// level; a: {b} is one, a: 1 {b} is a rule; #269 part F2).
-function blockDeclarationEnd(text, k) {
+// ;), or -1 when it is none (CSS Syntax 3, consume a declaration, as jsdom
+// 31 reads it: a name, a colon, then a value valid for it; anyValue's
+// takes {} blocks, another's with a {} block at its top level is a rule:
+// foo: 1 { a: 1 } is one; #269 part F2, #345 review). One pass, up to the
+// ; or that block.
+function blockDeclarationEnd(text, k, anyValue) {
   let colon = k + 1;
   while (colon < count && !meaningful(colon)) colon++;
   if (colon >= count || TYPE[colon] !== COLON) return -1;
-  const end = untilSemicolon(text, k);
-  let level = 0,
-    braces = false,
-    other = false;
-  for (let j = colon + 1; j < end; j++) {
+  if (anyValue !== undefined && identIs(text, START[k], END[k], anyValue)) return untilSemicolon(text, k);
+  // (the state untilSemicolon leaves: declaration() reads it)
+  depth = 0;
+  for (let j = colon + 1; j < count; j++) {
     const type = TYPE[j];
-    if (!meaningful(j)) continue;
-    if (level === 0) {
-      if (type === OPEN && text.charCodeAt(START[j]) === 123) braces = true;
-      else other = true;
+    if (depth === 0) {
+      if (type === SEMI) return j;
+      if (type === OPEN && text.charCodeAt(START[j]) === 123) return -1;
     }
-    if (type === OPEN || type === FUNCTION) level++;
-    else if (type === CLOSE && level > 0) level--;
+    if (type === OPEN || type === FUNCTION) open(opener(text, j));
+    else if (type === CLOSE && depth > 0) {
+      const top = STACK[depth - 1];
+      if ((top === VAR ? 41 : top) === text.charCodeAt(START[j])) depth--;
+    }
   }
-  return braces && other ? -1 : end;
+  return count;
 }
 
 // The at-rule at k (ending at end) into atRules, when it has a block.
