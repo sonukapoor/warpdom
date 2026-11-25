@@ -8855,6 +8855,8 @@ at-rule prelude ends it in warpdom (.a\;b {} becomes b {}), while
 jsdom 20 to 31 keep \; in it; jsdom 20 to 26 end at \{ (.a\ {b...)
 and 27 on keep it, and @media then writes the escape back (@media
 a\;b), so the fix is the prelude scan per version plus media query
-serialization.
+serialization. Probing Copilot's "closer look" note on 76581a8:
+override-colors refuses var() and attr() anywhere in a color (jsdom 31
+drops the descriptor; env() is kept).
 Next: F2 (@property and registered custom properties), F3 (the smaller
 details), then NEWEST_MODELED_JSDOM to 31.

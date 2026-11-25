@@ -293,6 +293,9 @@ function overrideColors(value, color) {
     const lower = tok.t === 'ident' ? tok.v.toLowerCase() : '';
     if (lower === 'currentcolor' || WIDE.has(lower) || lower in DARK_SYSTEM_COLORS_31) return null;
     if (tok.t === 'func' && /^light-dark\(/i.test(tok.v)) return null;
+    // (a descriptor substitutes nothing: var() and attr() anywhere in the
+    // color drop it, which a declaration's check would accept; #344 review)
+    if (tok.t === 'func' && /(?:^|[^\w-])(?:var|attr)\(/i.test(tok.v)) return null;
     const written = color(tok.v);
     if (written === null) return null;
     out.push(`${Math.min(index, 2147483647)} ${written}`);
