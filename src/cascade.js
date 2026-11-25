@@ -1128,7 +1128,8 @@ function sheetIndex(holder, ds, root, doc) {
   // adoptedStyleSheets)
   const adopted = holder.adopted?.items;
   // (copied by index: the public array's own properties, such as
-  // Symbol.isConcatSpreadable, must not change the list)
+  // Symbol.isConcatSpreadable, must not change the list; the copy is the
+  // cache's snapshot too)
   let sheets = own;
   if (adopted !== undefined && adopted.length !== 0) {
     sheets = own.slice();
@@ -1141,7 +1142,15 @@ function sheetIndex(holder, ds, root, doc) {
   if (reuse) index = cached.index;
   else if (sheets.length)
     index = buildIndex(sheets, validationModeOf(ds.window), ds.window[S].compat, lists, doc, root);
-  holder.cascade = { doc, treeRev, styleRev, cssomRev: cssomChanges.rev, sheets: sheets.slice(), index, lists };
+  holder.cascade = {
+    doc,
+    treeRev,
+    styleRev,
+    cssomRev: cssomChanges.rev,
+    sheets: sheets === own ? own.slice() : sheets,
+    index,
+    lists,
+  };
   return index;
 }
 

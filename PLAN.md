@@ -8734,7 +8734,11 @@ Reflect.preventExtensions, freeze and seal made the list
 non-extensible (the proxy refuses, as jsdom's: freeze and seal throw);
 a length descriptor with configurable, enumerable or writable: false
 removed sheets before it was refused (refused first now). Test: the
-edge-case parity scenario in test/adopted31.test.js.
+edge-case parity scenario in test/adopted31.test.js. Round 2 (c499b68):
+an accessor defined on the array ran with the raw array as this, so
+its push skipped the checks (the set trap forwards the receiver; test:
+the accessor scenario); the cache keeps the merged list itself, not a
+second copy, when there are adopted sheets (buildIndex never changes it).
 Next: F (CSSOM leftovers), then NEWEST_MODELED_JSDOM to 31. Found for
 F: replace() and replaceSync() messages on a sheet that is not
 constructed (jsdom 30: "Cannot call replaceSync on non-constructed

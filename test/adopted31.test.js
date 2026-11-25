@@ -399,3 +399,38 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31: adoptedStyleSheets: an accessor on the array runs with the array as this, so its changes are checked',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p>p</p>';
+    const cs = () => w.getComputedStyle(d.body.firstChild).marginTop;
+    const array = d.adoptedStyleSheets;
+    const out = [cs()];
+    let self;
+    Object.defineProperty(array, 'add', {
+      set(v) {
+        self = this;
+        this.push(v);
+      },
+      configurable: true,
+    });
+    out.push(
+      attempt(() => {
+        array.add = sheet(w, 'p { margin-top: 3px }');
+        return array.length;
+      }),
+      self === array,
+      cs(),
+      attempt(() => {
+        array.add = 'x';
+        return array.length;
+      }),
+      array.length,
+      cs(),
+    );
+    return out;
+  },
+  { jsdom: 31 },
+);

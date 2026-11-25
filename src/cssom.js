@@ -1570,11 +1570,13 @@ export function setAdoptedStyleSheets(node, iface, value) {
 function newAdopted(node, iface) {
   const items = [];
   const array = new Proxy(items, {
-    set(target, key, value) {
+    set(target, key, value, receiver) {
       const i = arrayIndex(key);
       if (i >= 0) return setAdopted(node, iface, items, i, value);
       if (key === 'length') return setAdoptedLength(items, value);
-      return Reflect.set(target, key, value);
+      // (an accessor's this is the public array, so its changes go
+      // through these traps)
+      return Reflect.set(target, key, value, receiver);
     },
     defineProperty(target, key, descriptor) {
       const i = arrayIndex(key);
