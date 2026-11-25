@@ -23,7 +23,7 @@ import {
 import { dispatch, reportError } from './events.js';
 import { computedStyle, cssNamespace, supportsDeclarationOf } from './css.js';
 import { pseudoName31, pseudoNode31 } from './cascade.js';
-import { compile, compileRuleSelector } from './selectors.js';
+import { compile, noteWindow31, supportsSelector31 } from './selectors.js';
 import { QuotaExceededError } from './storage.js';
 import { navigate, traverse } from './navigation.js';
 import { VERSION } from './version.js';
@@ -1812,6 +1812,8 @@ export function profileCompat({ jsdom = LATEST_JSDOM, cssstyle, beyondJsdom = fa
   const pendingLonghands =
     version[0] >= 27 ||
     (css === null ? !before(version, [23, 1, 0]) : css[0] > 4 || (css[0] === 4 && !before(css, [4, 4, 0])));
+  // (the queries read the profile once a jsdom 31 window exists)
+  if (version[0] >= 31) noteWindow31();
   return {
     version: jsdom,
     jsdom: version[0],
@@ -2189,11 +2191,11 @@ export function setupWindow(window, { url: initial = 'about:blank', fastFrames =
   Object.defineProperty(window, 'CSS', {
     value: cssNamespace(
       (selector) => {
+        // (jsdom 31: as its cascade reads a shadow tree's rules,
+        // :host-context() too; #342 review; :is() unforgiving, #269 F3a)
+        if (ws.compat.jsdom >= 31) return supportsSelector31(selector);
         try {
-          // (jsdom 31: as its cascade reads a shadow tree's rules,
-          // :host-context() too; #342 review)
-          if (ws.compat.jsdom >= 31) compileRuleSelector(selector, true);
-          else compile(selector);
+          compile(selector);
           return true;
         } catch {
           return false;

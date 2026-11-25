@@ -16,12 +16,23 @@ import {
   preprocessCss as preprocess,
 } from './internal.js';
 import { XML_NS, valueByName } from './attributes.js';
+import { urlOf } from './hyperlinks.js';
+import { fallbackBaseURL } from './base-url.js';
+import { serializeName31, serializeString31 } from './parse31.js';
 
 // --- tokens and parsing --------------------------------------------------------
 
 const WS = /[ \t\n\r\f]/;
-const isNameStart = (c) => /[A-Za-z_\u0080-￿]/.test(c);
-const isName = (c) => /[A-Za-z0-9_\-\u0080-￿]/.test(c);
+// (by code unit: a letter, _, or anything from U+0080; a name also takes
+// digits and -; '' past the end is neither)
+const isNameStart = (c) => {
+  const k = c.charCodeAt(0);
+  return (k >= 97 && k <= 122) || (k >= 65 && k <= 90) || k === 95 || k >= 0x80;
+};
+const isName = (c) => {
+  const k = c.charCodeAt(0);
+  return isNameStart(c) || (k >= 48 && k <= 57) || k === 45;
+};
 
 function invalid(selector) {
   return domError(`'${selector}' is not a valid selector.`, 'SyntaxError');
@@ -34,6 +45,15 @@ function invalid(selector) {
 // 30 and before, which applies every sheet everywhere) :host( ) is a test
 // of the element itself and :host-context() is invalid.
 let hostScoping = false;
+// jsdom 31's grammar (black box, 31.0.1; #269 part F3a): set while a
+// selector is parsed for a jsdom 31 window (compile's spec31, and the
+// cascade's rule selectors, compileRuleSelector's scoping). Its own names
+// (SIMPLE31, FUNCTIONAL31, ELEMENTS31), a pseudo-element only at the end
+// of its compound, the column combinator and & (nesting's, the scope).
+let grammar31 = false;
+// jsdom 31's selector() in @supports and CSS.supports: :is() and :where()
+// read unforgivingly, without pseudo-elements (supportsSelector31).
+let unforgiving31 = false;
 
 class Parser {
   constructor(text) {
@@ -149,7 +169,17 @@ class Parser {
     for (;;) {
       const ws = this.skipWs();
       const c = this.peek();
-      if (c === '>' || c === '+' || c === '~') {
+      const column = grammar31 && c === '|' && this.peek(1) === '|';
+      // (jsdom 31: nothing after a pseudo-element's compound: a::before b)
+      const next = column || c === '>' || c === '+' || c === '~' || (ws && c && c !== ',' && c !== ')');
+      if (next && grammar31 && parts[parts.length - 1].element !== null) this.fail();
+      if (column) {
+        // (the column combinator: no element is a table cell's column here)
+        this.i += 2;
+        this.skipWs();
+        combinators.push('||');
+        parts.push(this.compound());
+      } else if (c === '>' || c === '+' || c === '~') {
         this.i++;
         this.skipWs();
         combinators.push(c);
@@ -183,14 +213,32 @@ class Parser {
       if (name !== null) type = name;
     }
     if (ns !== undefined && type === null) this.fail();
-    if (ns === undefined && type !== null && this.peek() === '|' && this.peek(1) !== '=') this.fail();
+    if (ns === undefined && type !== null && this.peek() === '|' && this.peek(1) !== '=' && this.peek(1) !== '|')
+      this.fail();
     if (ns === '') {
       type = type ?? '*';
       tests.push({ kind: 'noNamespace' });
     }
+    // (jsdom 31: the compound's last pseudo-element, which only some
+    // pseudo-classes and pseudo-elements may follow)
+    let element = null;
     for (;;) {
       const c = this.peek();
-      if (c === '#') {
+      if (grammar31 && element !== null && (c === '#' || c === '.' || c === '[' || c === '&')) this.fail();
+      if (grammar31 && c === '&') {
+        this.i++;
+        tests.push({ kind: 'pseudo', name: 'scope', nesting: true });
+      } else if (grammar31 && c === ':') {
+        this.i++;
+        const element31 = this.peek() === ':';
+        if (element31) this.i++;
+        const test = element31 ? this.pseudoElement31() : this.pseudo31();
+        if (test.kind === 'never' || test.kind === 'slotted') {
+          if (element !== null && !followsElement31(element, test.element)) this.fail();
+          element = test.element;
+        } else if (element !== null && !afterElement31(element, test)) this.fail();
+        tests.push(test);
+      } else if (c === '#') {
         this.i++;
         const name = this.ident();
         if (name === null) this.fail();
@@ -226,7 +274,7 @@ class Parser {
       } else break;
     }
     if (type === null && tests.length === 0) this.fail();
-    return { type, tests };
+    return { type, tests, element };
   }
 
   attribute() {
@@ -260,25 +308,31 @@ class Parser {
       this.i += 2;
     } else this.fail();
     this.skipWs();
-    if (this.peek() === '"' || this.peek() === "'") value = this.string();
+    const quoted = this.peek() === '"' || this.peek() === "'";
+    if (quoted) value = this.string();
     else {
       value = this.ident();
       if (value === null) this.fail();
     }
     this.skipWs();
-    const flag = this.peek().toLowerCase();
+    let flag = this.peek().toLowerCase();
     if (flag === 'i' || flag === 's') {
       insensitive = flag === 'i';
       this.i++;
       this.skipWs();
-    }
+    } else flag = null;
     if (this.peek() !== ']') this.fail();
     this.i++;
-    return { kind: 'attr', name, op, value, insensitive, ns };
+    return { kind: 'attr', name, op, value, insensitive, ns, quoted, flag };
   }
 
   // A forgiving selector list (:is, :where): an invalid item is dropped.
   forgivingList() {
+    if (unforgiving31) {
+      const items = this.list();
+      if (items.some((c) => c.parts.some((part) => part.element !== null))) this.fail();
+      return items;
+    }
     const items = [];
     this.depth++;
     try {
@@ -374,6 +428,111 @@ class Parser {
     return { kind: 'pseudo', name: lower === 'matches' || lower === '-webkit-any' ? 'is' : lower, arg };
   }
 
+  // jsdom 31's pseudo-classes (after the colon): the legacy pseudo-elements
+  // (:before), -webkit-autofill as autofill, its functional ones.
+  pseudo31() {
+    const name = this.ident();
+    if (name === null) this.fail();
+    const lower = name.toLowerCase();
+    if (this.peek() !== '(') {
+      if (LEGACY_ELEMENTS.has(lower)) return { kind: 'never', element: lower, arg: null };
+      if (lower === '-webkit-autofill') return { kind: 'pseudo', name: 'autofill' };
+      if (!SIMPLE31.has(lower)) this.fail();
+      return { kind: 'pseudo', name: lower };
+    }
+    if (!FUNCTIONAL31.has(lower)) this.fail();
+    this.i++;
+    this.skipWs();
+    let arg;
+    if (lower === 'is' || lower === 'where') arg = this.forgivingList();
+    else if (lower === 'not' || lower === 'current') {
+      arg = this.list();
+      // (no pseudo-element in :not(): :not(::before))
+      if (lower === 'not' && arg.some((c) => c.parts.some((part) => part.element !== null))) this.fail();
+    } else if (lower === 'has') arg = this.list(true);
+    else if (lower === 'host' || lower === 'host-context') {
+      arg = this.list();
+      if (arg.some((c) => c.parts.length !== 1)) this.fail();
+    } else if (lower.startsWith('nth-')) arg = this.nth(lower.endsWith('child'));
+    else if (lower === 'heading') arg = this.items31(() => this.integer31());
+    else if (lower === 'lang') arg = this.items31(() => this.langRange31());
+    else if (lower === 'active-view-transition-type') arg = this.items31(() => this.ident() ?? this.fail());
+    else arg = this.ident() ?? this.fail(); // dir, state
+    this.skipWs();
+    if (this.peek() !== ')') this.fail();
+    this.i++;
+    return { kind: 'pseudo', name: lower, arg };
+  }
+
+  // A comma-separated list of one or more items.
+  items31(item) {
+    const items = [];
+    for (;;) {
+      items.push(item());
+      this.skipWs();
+      if (this.peek() !== ',') return items;
+      this.i++;
+      this.skipWs();
+    }
+  }
+
+  integer31() {
+    const m = /^[+-]?\d+(?![\d.eE\w])/.exec(this.text.slice(this.i));
+    if (!m) this.fail();
+    this.i += m[0].length;
+    return Number(m[0]);
+  }
+
+  // (an identifier or a string; written back as it was)
+  langRange31() {
+    if (this.peek() === '"' || this.peek() === "'") return { string: this.string() };
+    const ident = this.ident();
+    if (ident === null) this.fail();
+    return { ident };
+  }
+
+  // jsdom 31's pseudo-elements (after the two colons): its names,
+  // ::-webkit- and any name, part(), slotted(), highlight() and the other
+  // functional ones; each matches no element.
+  pseudoElement31() {
+    const name = this.ident();
+    if (name === null) this.fail();
+    const lower = name.toLowerCase();
+    if (this.peek() !== '(') {
+      if (!ELEMENTS31.has(lower) && !lower.startsWith('-webkit-')) this.fail();
+      return { kind: 'never', element: lower, arg: null };
+    }
+    if (lower === 'slotted') {
+      // (::slotted(<compound>): jsdom 31's cascade's, in a shadow tree's
+      // rules; elsewhere it matches nothing)
+      const slotted = hostScoping && this.depth === 1 ? this.slotted() : null;
+      if (slotted !== null) return { ...slotted, element: 'slotted' };
+      this.i++;
+      this.skipWs();
+      const arg = this.compound();
+      this.skipWs();
+      if (this.peek() !== ')') this.fail();
+      this.i++;
+      return { kind: 'never', element: 'slotted', arg };
+    }
+    if (!ELEMENT_FUNCTIONS31.has(lower)) this.fail();
+    this.i++;
+    this.skipWs();
+    const arg = [];
+    // (part(): names separated by whitespace; the others one name, or *
+    // for the view transition ones)
+    do {
+      if (this.peek() === '*' && lower.startsWith('view-transition-')) {
+        this.i++;
+        arg.push('*');
+      } else arg.push(this.ident() ?? this.fail());
+    } while (lower === 'part' && this.skipWs() && this.peek() !== ')');
+    this.skipWs();
+    if (this.peek() !== ')') this.fail();
+    this.i++;
+    return { kind: 'never', element: lower, arg };
+  }
+
   // an+b [of S]
   nth(allowOf) {
     const rest = this.text.slice(this.i);
@@ -403,6 +562,142 @@ class Parser {
     return { a, b, of };
   }
 }
+
+// jsdom 31's names (black box, 31.0.1): the pseudo-classes, the
+// functional ones, the pseudo-elements (and ::-webkit-<any name>), and
+// the four written with one colon too.
+const SIMPLE31 = new Set([
+  'active',
+  'active-view-transition',
+  'any-link',
+  'autofill',
+  'blank',
+  'buffering',
+  'checked',
+  'current',
+  'default',
+  'defined',
+  'disabled',
+  'empty',
+  'enabled',
+  'first-child',
+  'first-of-type',
+  'focus',
+  'focus-visible',
+  'focus-within',
+  'fullscreen',
+  'future',
+  'has-slotted',
+  'heading',
+  'host',
+  'hover',
+  'in-range',
+  'indeterminate',
+  'interest-source',
+  'interest-target',
+  'invalid',
+  'last-child',
+  'last-of-type',
+  'link',
+  'local-link',
+  'modal',
+  'muted',
+  'only-child',
+  'only-of-type',
+  'open',
+  'optional',
+  'out-of-range',
+  'past',
+  'paused',
+  'picture-in-picture',
+  'placeholder-shown',
+  'playing',
+  'popover-open',
+  'read-only',
+  'read-write',
+  'required',
+  'root',
+  'scope',
+  'seeking',
+  'stalled',
+  'target',
+  'target-current',
+  'user-invalid',
+  'user-valid',
+  'valid',
+  'visited',
+  'volume-locked',
+  'xr-overlay',
+]);
+const FUNCTIONAL31 = new Set([
+  'active-view-transition-type',
+  'current',
+  'dir',
+  'has',
+  'heading',
+  'host',
+  'host-context',
+  'is',
+  'lang',
+  'not',
+  'nth-child',
+  'nth-col',
+  'nth-last-child',
+  'nth-last-col',
+  'nth-last-of-type',
+  'nth-of-type',
+  'state',
+  'where',
+]);
+const ELEMENTS31 = new Set([
+  'after',
+  'backdrop',
+  'before',
+  'checkmark',
+  'column',
+  'details-content',
+  'file-selector-button',
+  'first-letter',
+  'first-line',
+  'grammar-error',
+  'marker',
+  'picker-icon',
+  'placeholder',
+  'scroll-marker',
+  'scroll-marker-group',
+  'search-text',
+  'selection',
+  'spelling-error',
+  'target-text',
+  'view-transition',
+]);
+const ELEMENT_FUNCTIONS31 = new Set([
+  'highlight',
+  'part',
+  'picker',
+  'scroll-button',
+  'view-transition-group',
+  'view-transition-image-pair',
+  'view-transition-new',
+  'view-transition-old',
+]);
+const LEGACY_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
+// What may follow a pseudo-element in its compound: after ::part() any
+// pseudo-class, after the others the user action ones; :is() and :where()
+// (forgiving) always, :not() of such pseudo-classes only (::before:not(.a)
+// is invalid); after ::before and ::after ::marker, after ::part() and
+// ::slotted() any pseudo-element.
+const USER_ACTION = new Set(['hover', 'active', 'focus', 'focus-visible', 'focus-within']);
+const afterElement31 = (element, test) => {
+  if (test.name === 'is' || test.name === 'where') return true;
+  const allowed = (t) =>
+    t.kind === 'pseudo' && (element === 'part' ? t.name !== 'not' || notOf(t) : USER_ACTION.has(t.name));
+  const notOf = (t) =>
+    t.arg.every((c) => c.parts.length === 1 && c.parts[0].type === null && c.parts[0].tests.every(allowed));
+  return test.name === 'not' ? notOf(test) : allowed(test);
+};
+const followsElement31 = (element, next) =>
+  element === 'part' || element === 'slotted' || ((element === 'before' || element === 'after') && next === 'marker');
 
 const SIMPLE_PSEUDOS = new Set([
   'first-child',
@@ -648,6 +943,8 @@ const DYNAMIC = new Set([
   'valid',
   'invalid',
   'empty',
+  'blank',
+  'local-link',
 ]);
 let compilingDynamic = false;
 // Pseudo-classes whose result can change with text data alone (a dir=auto
@@ -685,7 +982,8 @@ function compilePseudo({ name, arg }) {
     }
     // The host, or an element above it (shadow-including), matching it.
     case 'host-context': {
-      if (arg.length !== 1 || arg[0].parts.length !== 1) return () => false;
+      // (the DOM API's, jsdom 31's: no element is a host there)
+      if (!hostScoping || arg.length !== 1 || arg[0].parts.length !== 1) return () => false;
       const m = compileList(arg);
       return (el, ctx) => {
         for (let n = el; n !== null; n = shadowIncludingParent(n)) if (m(n, ctx)) return true;
@@ -799,7 +1097,28 @@ function compilePseudo({ name, arg }) {
       return (el) => !!el[S].indeterminate;
     case 'open':
       return (el) => isHTML(el) && (el[S].tag === 'details' || el[S].tag === 'dialog') && el[S].attrs.has('open');
+    // jsdom 31's (black box, 31.0.1): :blank an input (but a button, submit,
+    // reset or image one) or a textarea with an empty value (a checkbox's
+    // and a radio button's own, not "on"); :paused any media element, as
+    // none plays; :local-link a link to the document's URL (its fragment
+    // aside); :heading h1 to h6, :heading() those of the levels given.
+    case 'blank':
+      return isBlank;
+    case 'paused':
+    case 'playing':
+      return grammar31 && name === 'paused' ? (el) => isHTML(el) && MEDIA.has(el[S].tag) : () => false;
+    case 'local-link':
+      return isLocalLink;
+    case 'heading': {
+      const levels = arg ?? [1, 2, 3, 4, 5, 6];
+      return (el) => isHTML(el) && HEADINGS.has(el[S].tag) && levels.includes(HEADINGS.get(el[S].tag));
+    }
     case 'lang': {
+      // (jsdom 31: a list of ranges)
+      if (Array.isArray(arg)) {
+        const tests = arg.map(({ ident, string }) => compilePseudo({ name: 'lang', arg: ident ?? string }));
+        return (el) => tests.some((t) => t(el));
+      }
       const lang = String(arg).toLowerCase();
       return (el) => {
         const l = languageOf(el)?.toLowerCase();
@@ -813,6 +1132,39 @@ function compilePseudo({ name, arg }) {
     default:
       return () => false; // hover, active, visited, target, ...
   }
+}
+
+const MEDIA = new Set(['video', 'audio']);
+const HEADINGS = new Map([
+  ['h1', 1],
+  ['h2', 2],
+  ['h3', 3],
+  ['h4', 4],
+  ['h5', 5],
+  ['h6', 6],
+]);
+const NOT_BLANK = new Set(['button', 'submit', 'reset', 'image']);
+function isBlank(el) {
+  const s = el[S];
+  if (!isHTML(el)) return false;
+  if (s.tag === 'textarea') return el.value === '';
+  if (s.tag !== 'input') return false;
+  const type = (s.attrs.get('type') ?? '').toLowerCase();
+  if (NOT_BLANK.has(type)) return false;
+  const own = type === 'checkbox' || type === 'radio';
+  return (own ? (s.value ?? s.attrs.get('value') ?? '') : el.value) === '';
+}
+const withoutFragment = (href) => {
+  const hash = href.indexOf('#');
+  return hash < 0 ? href : href.slice(0, hash);
+};
+function isLocalLink(el) {
+  const s = el[S];
+  if (!isHTML(el) || (s.tag !== 'a' && s.tag !== 'area')) return false;
+  const url = urlOf(el);
+  if (url === null) return false;
+  const doc = fallbackBaseURL(s.doc);
+  return withoutFragment(url.href) === withoutFragment(typeof doc === 'string' ? doc : doc.href);
 }
 
 // The language of an element (HTML 3.2.6.2): its lang attribute in the XML
@@ -986,28 +1338,39 @@ function compileList(list) {
 
 const CACHE_LIMIT = 2000;
 const cache = new Map();
+// (jsdom 31's grammar: its own compiled selectors)
+const cache31 = new Map();
 
-export function compile(selector) {
+// spec31: a jsdom 31 window's (compat.specSelectors).
+export function compile(selector, spec31 = false) {
   const text = String(selector);
-  let entry = cache.get(text);
-  if (!entry) {
+  const entries = spec31 ? cache31 : cache;
+  return entries.get(text) ?? compileEntry(text, spec31, entries);
+}
+
+function compileEntry(text, spec31, entries) {
+  grammar31 = spec31;
+  let list, match;
+  try {
     const parser = new Parser(text);
-    const list = parser.list();
+    list = parser.list();
     if (parser.i < parser.text.length) throw invalid(text);
     compilingDynamic = false;
-    const match = compileList(list);
-    const simpleId =
-      list.length === 1 &&
-      list[0].parts.length === 1 &&
-      list[0].parts[0].type === null &&
-      list[0].parts[0].tests.length === 1 &&
-      list[0].parts[0].tests[0].kind === 'id'
-        ? list[0].parts[0].tests[0].value
-        : null;
-    entry = { match, simpleId, dynamic: compilingDynamic };
-    if (cache.size >= CACHE_LIMIT) cache.clear();
-    cache.set(text, entry);
+    match = compileList(list);
+  } finally {
+    grammar31 = false;
   }
+  const simpleId =
+    list.length === 1 &&
+    list[0].parts.length === 1 &&
+    list[0].parts[0].type === null &&
+    list[0].parts[0].tests.length === 1 &&
+    list[0].parts[0].tests[0].kind === 'id'
+      ? list[0].parts[0].tests[0].value
+      : null;
+  const entry = { match, simpleId, dynamic: compilingDynamic };
+  if (entries.size >= CACHE_LIMIT) entries.clear();
+  entries.set(text, entry);
   return entry;
 }
 
@@ -1064,6 +1427,7 @@ export function compileRuleSelector(selector, scoping = false) {
   let entries = ruleCache.get(key);
   if (!entries) {
     hostScoping = scoping;
+    grammar31 = scoping;
     try {
       const parser = new Parser(text);
       const list = parser.list();
@@ -1075,11 +1439,66 @@ export function compileRuleSelector(selector, scoping = false) {
       });
     } finally {
       hostScoping = false;
+      grammar31 = false;
     }
     if (ruleCache.size >= CACHE_LIMIT) ruleCache.clear();
     ruleCache.set(key, entries);
   }
   return entries;
+}
+
+// A style rule's selector in jsdom 31 (#269 part F3a): its selectorText
+// (serializeList31, below), or null when jsdom 31 refuses it, which drops
+// the rule.
+const textCache31 = new Map();
+export function ruleSelector31(selector) {
+  let text = textCache31.get(selector);
+  if (text === undefined) {
+    hostScoping = true;
+    grammar31 = true;
+    try {
+      const parser = new Parser(selector);
+      const list = parser.list();
+      text = parser.i < parser.text.length ? null : serializeList31(list);
+    } catch {
+      text = null;
+    } finally {
+      hostScoping = false;
+      grammar31 = false;
+    }
+    if (textCache31.size >= CACHE_LIMIT) textCache31.clear();
+    textCache31.set(selector, text);
+  }
+  return text;
+}
+
+// Whether jsdom 31's selector() takes a selector (black box, 31.0.1):
+// valid as its cascade reads a shadow tree's rules (:host-context() too),
+// with :is() and :where() unforgiving: an invalid or empty list, or a
+// pseudo-element in it, makes it false (:is(::before), :is(a, b:foo)).
+const supportsCache31 = new Map();
+export function supportsSelector31(selector) {
+  const text = String(selector);
+  let known = supportsCache31.get(text);
+  if (known === undefined) {
+    hostScoping = true;
+    grammar31 = true;
+    unforgiving31 = true;
+    try {
+      const parser = new Parser(text);
+      parser.list();
+      known = parser.i >= parser.text.length;
+    } catch {
+      known = false;
+    } finally {
+      hostScoping = false;
+      grammar31 = false;
+      unforgiving31 = false;
+    }
+    if (supportsCache31.size >= CACHE_LIMIT) supportsCache31.clear();
+    supportsCache31.set(text, known);
+  }
+  return known;
 }
 
 // A shadow tree's rule whose subject is outside it (CSS Scoping 3): its
@@ -1095,10 +1514,12 @@ export function shadowRule(selector) {
   let rule = shadowRuleCache.get(text);
   if (rule === undefined) {
     hostScoping = true;
+    grammar31 = true;
     try {
       rule = shadowRuleOf(text);
     } finally {
       hostScoping = false;
+      grammar31 = false;
     }
     if (shadowRuleCache.size >= CACHE_LIMIT) shadowRuleCache.clear();
     shadowRuleCache.set(text, rule);
@@ -1129,12 +1550,19 @@ function shadowRuleOf(text) {
   };
 }
 
+// Whether a jsdom 31 window was made in this process: until then the
+// queries read no profile (a 31 window's costs them about 5 ns a call).
+let windows31 = false;
+export function noteWindow31() {
+  windows31 = true;
+}
+
 export function matches(el, selector) {
-  return compile(selector).match(el, { scope: el });
+  return compile(selector, windows31 && specSelectors(el)).match(el, { scope: el });
 }
 
 export function closest(el, selector) {
-  const { match } = compile(selector);
+  const { match } = compile(selector, windows31 && specSelectors(el));
   const ctx = { scope: el };
   for (let n = el; n; n = parentElement(n)) if (match(n, ctx)) return n;
   return null;
@@ -1150,8 +1578,11 @@ export function setQueryCache(on) {
   querySelectorAll = on ? cachedQuerySelectorAll : uncachedQuerySelectorAll;
 }
 function uncachedQuerySelectorAll(root, selector, first = false) {
-  return query(root, compile(typeof selector === 'string' ? selector : String(selector)), first);
+  const rs = root[S];
+  const doc = rs.type === DOCUMENT_NODE ? root : rs.doc;
+  return query(root, compile(typeof selector === 'string' ? selector : String(selector), spec31Doc(doc)), first);
 }
+const spec31Doc = (doc) => windows31 && doc[S].window[S].compat.specSelectors === true;
 
 export let querySelectorAll = cachedQuerySelectorAll;
 function cachedQuerySelectorAll(root, selector, first = false) {
@@ -1165,7 +1596,7 @@ function cachedQuerySelectorAll(root, selector, first = false) {
     const all = cache.get(text);
     if (all !== undefined) return all;
   }
-  const entry = compile(text);
+  const entry = compile(text, spec31Doc(doc));
   if (entry.dynamic) return query(root, entry, first);
   if (!cache || rs.queryCacheRev !== rev || rs.queryCacheDoc !== doc || cache.size >= QUERY_CACHE_LIMIT) {
     cache = rs.queryCache = new Map();
@@ -1208,4 +1639,96 @@ function query(root, { match, simpleId }, first) {
     }
   }
   return out;
+}
+
+// --- jsdom 31's selectorText -----------------------------------------------------
+// (black box, 31.0.1; #269 part F3a): a style rule's selector serialized
+// from its parse, as CSSOM's serialize a selector: names as identifiers (escaped where needed: .\31 a,
+// #\#), strings in double quotes, pseudo names in lowercase and the
+// legacy pseudo-elements with two colons (:before is ::before), a default
+// * left out (*.a is .a, *|a is a), an+b in its short form (odd is 2n+1,
+// 1n+0 is n), combinators between spaces and list items after ", ".
+
+const serializeList31 = (list) => list.map(serializeComplex).join(', ');
+
+function serializeComplex({ parts, combinators, relative }) {
+  let out = '';
+  for (let i = 0; i < parts.length; i++) {
+    // (a relative selector's leading combinator: none for a descendant)
+    const c = relative ? combinators[i] : combinators[i - 1];
+    if (c === ' ') out += i > 0 ? ' ' : '';
+    else if (c !== undefined) out += i > 0 ? ` ${c} ` : `${c} `;
+    out += serializeCompound(parts[i]);
+  }
+  return out;
+}
+
+function serializeCompound({ type, tests }) {
+  const noNamespace = tests.length > 0 && tests[0].kind === 'noNamespace';
+  const rest = noNamespace ? tests.slice(1) : tests;
+  const name = type === '*' ? '*' : type !== null && serializeName31(type);
+  let out = '';
+  if (noNamespace) out = `|${name}`;
+  else if (type !== null && (type !== '*' || rest.length === 0)) out = name;
+  for (const t of rest) out += serializeTest(t);
+  return out;
+}
+
+function serializeTest(t) {
+  switch (t.kind) {
+    case 'id':
+      return `#${serializeName31(t.value)}`;
+    case 'class':
+      return `.${serializeName31(t.value)}`;
+    case 'attr': {
+      const ns = t.ns === '*' ? '*|' : '';
+      if (t.op === null) return `[${ns}${serializeName31(t.name)}]`;
+      const value = t.quoted ? serializeString31(t.value) : serializeName31(t.value);
+      return `[${ns}${serializeName31(t.name)}${t.op}${value}${t.flag === null ? '' : ` ${t.flag}`}]`;
+    }
+    case 'never':
+    case 'slotted':
+      return `::${t.element}${elementArgument(t)}`;
+    default:
+      return t.nesting ? '&' : `:${t.name}${pseudoArgument(t)}`;
+  }
+}
+
+function elementArgument(t) {
+  if (t.arg === null || t.arg === undefined) return '';
+  if (t.element === 'slotted') return `(${serializeCompound(t.arg)})`;
+  return `(${t.arg.map((name) => (name === '*' ? '*' : serializeName31(name))).join(' ')})`;
+}
+
+function pseudoArgument({ name, arg }) {
+  if (arg === undefined) return '';
+  if (name.startsWith('nth-')) {
+    const of = arg.of ? ` of ${serializeList31(arg.of)}` : '';
+    return `(${anPlusB(arg.a, arg.b)}${of})`;
+  }
+  switch (name) {
+    case 'lang':
+      return `(${arg.map(langRange).join(', ')})`;
+    case 'heading':
+      return `(${arg.join(', ')})`;
+    case 'active-view-transition-type':
+      return `(${arg.map(serializeName31).join(', ')})`;
+    case 'dir':
+    case 'state':
+      return `(${serializeName31(arg)})`;
+    default:
+      return `(${serializeList31(arg)})`;
+  }
+}
+
+const langRange = ({ ident, string }) => (ident === undefined ? serializeString31(string) : serializeName31(ident));
+
+// (CSS Syntax 3's serialize <an+b>)
+function anPlusB(a, b) {
+  if (a === 0) return String(b);
+  let n = `${a}n`;
+  if (a === 1) n = 'n';
+  else if (a === -1) n = '-n';
+  if (b === 0) return n;
+  return b > 0 ? `${n}+${b}` : `${n}${b}`;
 }

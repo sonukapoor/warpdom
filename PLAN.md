@@ -9017,3 +9017,89 @@ Found and left for F3 (custom properties too): jsdom 31 keeps CR LF in a
 specified value set with setProperty ("a\<CR LF>b"), warpdom has LF.
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.
+
+## 2026-11-25: jsdom 31, CSS part F3: plan, and F3a: selectors (branch feat/269-jsdom31-details, #269)
+
+F2 merged (#345). Probing F3's list across jsdom 20 to 31 (black box)
+found more than "smaller details": jsdom 31 has a selector engine of its
+own (no nwsapi or dom-selector dependency), and a style rule whose
+selector it refuses is dropped from a sheet and refused by insertRule
+(jsdom 27 to 30 keep a..b {}, 1a {}, a:foo {}). warpdom's 31 profile
+differs from it on 70 of 98 probed selectors (validity in
+querySelector, and selectorText).
+Decision (2026-11-25): F3 in three PRs. F3a (this one): jsdom 31's
+selectors. F3b: the CSSOM details (insertRule and deleteRule messages,
+CDO and CDC in parse a rule, @keyframes and @container text, the CSS 2
+accessors of CSSPageDescriptors, CSSPropertyRule's key order). F3c: the
+value differences (computed angles, times and transform lengths,
+relative colors, calc() + without whitespace, image-set(), CR LF in a
+custom property's value).
+jsdom 31's selectors (black box, 31.0.1):
+- Valid in a rule exactly when valid in querySelector; the rule's
+  selectorText is the selector serialized: pseudo names lowercased,
+  :before, :after, :first-line and :first-letter as ::, -webkit-autofill
+  as autofill, a default * dropped (*.a is .a, *|a is a, [|b] is [b]),
+  an+b canonical (odd is 2n+1, even 2n, +5 is 5, 2N + 1 is 2n+1),
+  attribute whitespace dropped and the flag lowercased after a space
+  ([ a = b ] is [a=b], [a="b"i] is [a="b" i]).
+- Known pseudo-classes only (a:foo, :focus-ring, :first, :target-within
+  refused; -moz- and -ms- names refused, :-webkit-any() and :matches()
+  too); ::-webkit-<anything> is a pseudo-element, other unknown
+  pseudo-elements are refused (::cue, ::-moz-selection); a pseudo-element
+  ends the compound but for pseudo-classes after it (a::before:hover,
+  not a::before.b or a::before b); :not() takes no pseudo-element, :is()
+  and :where() may be empty, :has() may not; a column combinator (||),
+  & (the scope), :state(ident), :heading and :heading(n), :dir() of any
+  ident, :lang() of a list; ns|a refused (no @namespace), #1a and .1a
+  refused.
+- Matching: most of the newly known names match nothing; :blank an
+  empty input, :paused a video not playing, :local-link a link to the
+  document's own URL, :heading h1 to h6, & the scope (closest(&) is the
+  element, a document query none).
+Found and left (1.0 profiles, not 31): querySelector's validity in
+jsdom 20 to 30 follows the engine version npm installs (nwsapi 2.2.x for
+20 to 22 and 24 to 26, @asamuzakjp/dom-selector for 23 and 27 to 30),
+which warpdom does not track (:before, :-webkit-autofill, :current, & a
+valid there, invalid in warpdom); insertRule's messages in 27 to 30.
+Done (selectors.js; one grammar flag, set while a selector is parsed for
+a jsdom 31 window, so other profiles parse as before):
+- jsdom 31's names (SIMPLE31, FUNCTIONAL31, ELEMENTS31,
+  ELEMENT_FUNCTIONS31), the legacy pseudo-elements, -webkit-autofill, the
+  rules after a pseudo-element (afterElement31, followsElement31), ||, &,
+  :heading(), :lang() lists, :state(), :dir() of any ident, :host() and
+  :host-context() of compounds; :blank, :paused, :local-link and :heading
+  match as above; :host-context() matches nothing in the DOM API.
+- Compiled selectors are cached apart for jsdom 31 (cache31; the
+  cascade's rule selectors already were, by scoping).
+- A 31 sheet's style rule takes its selectorText from ruleSelector31
+  (parse, then serializeList31), or is dropped (insertRule: SyntaxError);
+  read from the prelude as written, only CSS whitespace trimmed (parseRules'
+  css31), so a leading U+00A0 stays (" .t", a type selector: the item left
+  in D3b is done); the selectorText setter the same, comments dropped.
+- selector() in @supports and CSS.supports (supportsSelector31): :is() and
+  :where() unforgiving, no pseudo-element in them (:is(::before),
+  :is(::slotted(i)) and :is(a, b:foo) are false), and :-webkit-autofill
+  true (the E4a and S3 items left are done).
+- isName and isNameStart by code unit, not a regex per character (every
+  profile; a cold sheet parse 83.3 to 75.6 ms in the jsdom 31 profile).
+Speed (node 22.17.1, 6 interleaved runs, medians):
+- bench:hot (default profile): querySelector #id 32.65 and 33.2 ns,
+  matches 20.8 and 20.9, closest 115.1 and 115.85, the querySelectorAll
+  rows within 1.2% (noise). The queries read the profile only once a
+  jsdom 31 window exists (noteWindow31; reading it on every call cost 4 to
+  6 ns), and compile's cache miss is its own function (compileEntry; with
+  it inline, querySelector #id was 7.7% slower).
+- jsdom 31 profile: matches() 35.2 and 37.25 ms per 1e6 (the profile read,
+  about 2 ns a call; reason: jsdom 31's grammar differs, so its compiled
+  selectors are cached apart and each query finds its window's); a style
+  sheet's rules with new selectors (36,000, cold caches) 136.9 and 155.1 ms
+  with a computed style read after each sheet (36.5 and 39.7 ms without;
+  about 0.5 us per new selector; reason: jsdom 31 drops a rule whose
+  selector it refuses, so the sheet parses each selector when it is read).
+  Reusing that parse in the cascade's compile was slower (162.0 ms),
+  dropped. Repeated sheets: 195.2 and 195.3 ms.
+- bench/load.js (both trees in one location, 8 alternating runs): cold
+  load 32.25 and 32.6 ms, first window 2.35 and 2.48, later windows 0.2145
+  and 0.217 (noise).
+Next: F3b (the CSSOM details), F3c (the values), then
+NEWEST_MODELED_JSDOM to 31.

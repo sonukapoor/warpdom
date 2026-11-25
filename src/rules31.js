@@ -31,7 +31,7 @@
 //   written with their escapes (\31 a).
 // A descriptor that is !important or does not parse is dropped; the last
 // valid one wins.
-import { parseDeclarationList31, serializeName31 } from './parse31.js';
+import { parseDeclarationList31, serializeName31, serializeString31 as quote } from './parse31.js';
 import { decodeEscapes } from './conditions31.js';
 import { DARK_SYSTEM_COLORS_31 } from './colors.js';
 import { UNIVERSAL, independent31, initialText31, parseSyntax31, universalInitial31 } from './property31.js';
@@ -172,19 +172,6 @@ function serializeFamily(name) {
     words.every((word) => PLAIN_WORD.test(word)) && !GENERIC.has(first) && !(words.length === 1 && WIDE.has(first));
   return plain ? name : quote(name);
 }
-// CSSOM's serialize a string.
-function quote(value) {
-  let out = '"';
-  for (const ch of value) {
-    const c = ch.codePointAt(0);
-    if (c === 0) out += '�';
-    else if ((c >= 1 && c <= 0x1f) || c === 0x7f) out += `\\${c.toString(16)} `;
-    else if (ch === '"' || ch === '\\') out += `\\${ch}`;
-    else out += ch;
-  }
-  return `${out}"`;
-}
-
 // --- @font-feature-values ----------------------------------------------------------
 
 const FEATURE_BLOCKS = [
