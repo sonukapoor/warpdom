@@ -8982,5 +8982,11 @@ computes it); resetWindow clears registerProperty's Map; a shadow root
 is tracked once per document (a WeakSet). Found and left for F3 (regular
 properties too): relative colors (rgb(from blue r g b)) compute to
 color(srgb 0 0 1) in jsdom 31, warpdom keeps the text.
+Round 4 (2026-11-25): an escaped CSS-wide keyword or default
+(\69 nherit, \44 efault) was a <custom-ident>, in values too; container
+units (cqw, cqh, cqi, cqb, cqmin, cqmax) make an initial value dependent,
+as jsdom 31 has it (viewport units do not); resetWindow also forgets the
+document's tracked shadow roots, so a root the last file left registers
+nothing in the next.
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.

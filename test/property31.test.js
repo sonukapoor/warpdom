@@ -833,3 +833,36 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'review round 4: escaped keywords are no <custom-ident>; container units are dependent (#345 review)',
+  (w) => {
+    const get = tree(w);
+    const out = [];
+    for (const [syntax, initial] of [
+      ['<custom-ident>', '\\69 nherit'],
+      ['<custom-ident>', '\\44 efault'],
+      ['<custom-ident>', 'INHERIT'],
+      ['<custom-ident>', 'Abc'],
+      ['<length>', '1cqw'],
+      ['<length>', '1cqmin'],
+      ['<number>', 'sign(1cqb)'],
+      ['<length>', '1vw'],
+      ['<length>', '1px'],
+    ]) {
+      const name = `--n${out.length}`;
+      out.push(
+        attempt(() => w.CSS.registerProperty({ name, syntax, inherits: false, initialValue: initial })),
+        get('p', name),
+      );
+    }
+    const text = '@property --a { syntax: "<length>"; inherits: false; initial-value: 1cqh; }';
+    out.push(ruleOf(w, text), valuesOf(w, text));
+    w.CSS.registerProperty({ name: '--k', syntax: '<custom-ident>', inherits: false, initialValue: 'x' });
+    w.CSS.registerProperty({ name: '--q', syntax: '<length>', inherits: false, initialValue: '1px' });
+    sheet(w, '#p { --k: \\69 nherit; --q: 1cqw }');
+    out.push(get('p', '--k'), get('p', '--q'));
+    return out;
+  },
+  { jsdom: 31 },
+);

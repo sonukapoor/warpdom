@@ -18,8 +18,8 @@
 //   urls and strings in double quotes, identifiers as written; a list is
 //   written with one space, or a comma and a space, between its values.
 // - An initial value is computationally independent when it uses no
-//   font relative unit (em, rem, ex, lh, ...; viewport units are fine)
-//   and no var().
+//   font relative unit (em, rem, ex, lh, ...) or container one (cqw,
+//   ...; viewport units are fine), and no var().
 import { isLengthUnit, isMathFunction, isValidValue, readEscapes, tokenizeValue } from './css-values.js';
 import { mathType, mathValue, simplifyMath } from './calc31.js';
 import { sixDigits } from './lengths.js';
@@ -265,9 +265,13 @@ function component(part, tok, text, ctx) {
       return tok.t === 'url' ? `url(${cssString(ctx.url(tok.url))})` : null;
     case 'string':
       return tok.t === 'string' && tok.closed ? cssString(stringValue(source)) : null;
-    case 'custom-ident':
-      if (tok.t !== 'ident' || RESERVED.has(tok.v)) return null;
-      return source.includes('\\') ? identText(source) : source;
+    case 'custom-ident': {
+      if (tok.t !== 'ident') return null;
+      // (a keyword escaped is that keyword: \69 nherit; #345 review)
+      const escapes = source.includes('\\');
+      if (RESERVED.has(escapes ? readEscapes(source).toLowerCase() : tok.v)) return null;
+      return escapes ? identText(source) : source;
+    }
     case 'ident':
       return tok.t === 'ident' && readEscapes(source) === part.ident ? part.ident : null;
     case 'image':
@@ -378,17 +382,21 @@ function transformFunction(tok, text, ctx) {
 
 // Units that read the element's font or line height (CSS Values 4, 6.1.1).
 const FONT_RELATIVE = new Set(['em', 'rem', 'ex', 'rex', 'cap', 'rcap', 'ch', 'rch', 'ic', 'ric', 'lh', 'rlh']);
+// ... and those that read a container's size, which jsdom 31 refuses too
+// (1cqw; #345 review).
+const DEPENDENT_UNITS = new Set([...FONT_RELATIVE, 'cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax']);
 const FONT_UNIT = /\d(?:[eE][+-]?\d+)?([A-Za-z]+)/g;
 const usesFontUnits = (text) => {
   for (const m of text.matchAll(FONT_UNIT)) if (FONT_RELATIVE.has(m[1].toLowerCase())) return true;
   return false;
 };
-// Whether tokens have a font relative unit, in a function too (sign(1em),
-// linear-gradient(red 1em, blue)); strings and urls are none (#345 review).
-function fontRelative(list) {
+// Whether tokens have a font or container relative unit, in a function
+// too (sign(1em), linear-gradient(red 1em, blue)); strings and urls are
+// none (#345 review).
+function dependentUnits(list) {
   for (const tok of list) {
-    if (tok.t === 'dimension' && FONT_RELATIVE.has(unitOf(tok))) return true;
-    if (tok.args !== undefined && fontRelative(tok.args)) return true;
+    if (tok.t === 'dimension' && DEPENDENT_UNITS.has(unitOf(tok))) return true;
+    if (tok.args !== undefined && dependentUnits(tok.args)) return true;
   }
   return false;
 }
@@ -408,7 +416,7 @@ const INDEPENDENT = {
 export function independent31(syntax, text) {
   if (hasVarReference(text)) return false;
   const list = tokenizeValue(text.includes('/*') ? withoutComments(text) : text);
-  if (list !== null && fontRelative(list)) return false;
+  if (list !== null && dependentUnits(list)) return false;
   return matchValue31(syntax, text, INDEPENDENT) !== null;
 }
 // A universal syntax's initial value: any value but a CSS-wide keyword

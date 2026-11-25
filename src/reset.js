@@ -165,6 +165,9 @@ export function resetWindow(window) {
   // (CSS.registerProperty's registrations, the Map the CSS namespace has;
   // #345 review)
   ws.registered31?.clear();
+  // (and the shadow roots whose sheets register: a root the last file
+  // left is no longer the document's; #345 review)
+  ds.shadowRoots31 = ds.shadowRootsSeen31 = ds.shadowRootsKept31 = undefined;
   // The next file starts without frames (pending callbacks dropped, the
   // beat's interval cleared).
   stopFrames(window);
