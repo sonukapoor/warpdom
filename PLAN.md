@@ -9111,6 +9111,10 @@ in ::part() or ::highlight() are written with their escapes (::-webkit-\!,
 ::highlight(\*)); :lang() lists matched without a closure per call. Not
 reproduced: & in a document query is the root element in jsdom 31 too
 (the probe that said "none" joined ids, and the root has none; the test
-now names elements).
+now names elements). Copilot's second pass (158ee8d, two missed items,
+reproduced): an escaped * (\*) is a type named *, not the universal
+selector (written \*, kept before .a, matches nothing; the compound's
+named); :local-link compares with the document's own URL (an about:blank
+iframe's links to about:blank match, not those to its creator's page).
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.

@@ -437,3 +437,25 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#346 review): an escaped * is a type name; :local-link in an about:blank iframe',
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent = '\\* {} \\*.a {} |\\* {} [\\*] {} * {} b {}';
+    d.head.append(style);
+    d.body.innerHTML = '<p class=a></p>';
+    const counts = ['\\*', '\\*.a', '|\\*', '*'].map((s) => d.querySelectorAll(s).length);
+    const frame = d.createElement('iframe');
+    d.body.append(frame);
+    const inner = frame.contentDocument;
+    inner.body.innerHTML = `<a id=a href="${w.location.href}">p</a><a id=b href="about:blank">b</a><a id=c href="#x">c</a>`;
+    return [
+      [...style.sheet.cssRules].map((r) => r.selectorText),
+      counts,
+      [...inner.querySelectorAll(':local-link')].map((e) => e.id),
+    ];
+  },
+  { jsdom: 31 },
+);

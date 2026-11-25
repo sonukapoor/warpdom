@@ -17,7 +17,6 @@ import {
 } from './internal.js';
 import { XML_NS, valueByName } from './attributes.js';
 import { urlOf } from './hyperlinks.js';
-import { fallbackBaseURL } from './base-url.js';
 import { serializeName31, serializeString31 } from './parse31.js';
 
 // --- tokens and parsing --------------------------------------------------------
@@ -207,12 +206,15 @@ class Parser {
       this.i++;
       ns = '';
     }
+    // (named: jsdom 31's \*, a type named *, not the universal selector)
+    let named = false;
     if (this.peek() === '*') {
       this.i++;
       type = '*';
     } else {
       const name = this.ident();
       if (name !== null) type = name;
+      named = grammar31 && name === '*';
     }
     if (ns !== undefined && type === null) this.fail();
     if (ns === undefined && type !== null && this.peek() === '|' && this.peek(1) !== '=' && this.peek(1) !== '|')
@@ -276,7 +278,7 @@ class Parser {
       } else break;
     }
     if (type === null && tests.length === 0) this.fail();
-    return { type, tests, element };
+    return { type, tests, element, named };
   }
 
   attribute() {
@@ -1168,7 +1170,10 @@ function isLocalLink(el) {
   if (!isHTML(el) || (s.tag !== 'a' && s.tag !== 'area')) return false;
   const url = urlOf(el);
   if (url === null) return false;
-  const doc = fallbackBaseURL(s.doc);
+  // (the document's own URL: an about:blank iframe's is about:blank, not
+  // the base it takes from its creator)
+  const ds = s.doc[S];
+  const doc = ds.url ?? ds.window[S].url.href;
   return withoutFragment(url.href) === withoutFragment(typeof doc === 'string' ? doc : doc.href);
 }
 
@@ -1241,10 +1246,10 @@ const shadowHostAbove = (el) => {
 };
 
 function compileCompound(compound) {
-  const { type, tests } = compound;
+  const { type, tests, named } = compound;
   if (hostScoping && tests.some(isHostTest) && !isHostCompound(compound)) return () => false;
   const checks = tests.map(compileTest);
-  const lower = type && type !== '*' ? type.toLowerCase() : null;
+  const lower = type && (type !== '*' || named) ? type.toLowerCase() : null;
   const typeCheck = lower === null ? null : (el) => (isHTML(el) ? el[S].tag === lower : el[S].tag === type);
   const all = typeCheck ? [typeCheck, ...checks] : checks;
   if (all.length === 1) return all[0];
@@ -1386,8 +1391,8 @@ const listSpecificity = (list) => Math.max(0, ...list.map(complexSpecificity));
 
 function complexSpecificity({ parts }) {
   let total = 0;
-  for (const { type, tests } of parts) {
-    if (type !== null && type !== '*') total += 1;
+  for (const { type, tests, named } of parts) {
+    if (type !== null && (type !== '*' || named)) total += 1;
     for (const t of tests) {
       switch (t.kind) {
         case 'id':
@@ -1671,13 +1676,14 @@ function serializeComplex({ parts, combinators, relative }) {
   return out;
 }
 
-function serializeCompound({ type, tests }) {
+function serializeCompound({ type, tests, named }) {
   const noNamespace = tests.length > 0 && tests[0].kind === 'noNamespace';
   const rest = noNamespace ? tests.slice(1) : tests;
-  const name = type === '*' ? '*' : type !== null && serializeName31(type);
+  const universal = type === '*' && !named;
+  const name = universal ? '*' : type !== null && serializeName31(type);
   let out = '';
   if (noNamespace) out = `|${name}`;
-  else if (type !== null && (type !== '*' || rest.length === 0)) out = name;
+  else if (type !== null && (!universal || rest.length === 0)) out = name;
   for (const t of rest) out += serializeTest(t);
   return out;
 }
