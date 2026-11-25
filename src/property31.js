@@ -147,18 +147,16 @@ function brokenString(token) {
   }
   return false;
 }
-// A backslash and a newline, not after a backslash (\\ is an escaped one).
-const CONTINUATION = /(?<=(?:^|[^\\])(?:\\\\)*)\\(?:\r\n|[\n\r\f])/;
 // A string token's value: its escapes read, without its quotes.
 function stringValue(token) {
   const quote = token[0];
   let body = token.slice(1);
   if (body.endsWith(quote) && !/(?:^|[^\\])(?:\\\\)*\\$/.test(body.slice(0, -1))) body = body.slice(0, -1);
-  // (a backslash the end leaves is dropped: "abc\; a newline escaped is
-  // none, CR LF one too, and ends the escape before it: "\41\<LF>B" is
-  // "AB"; #345 review)
+  // (a backslash the end leaves is dropped: "abc\; readEscapes drops a
+  // newline escaped, CR LF too, after ending the escape before it:
+  // "\41\<LF>B" is "AB"; #345 review)
   if (/(?:^|[^\\])(?:\\\\)*\\$/.test(body)) body = body.slice(0, -1);
-  return body.split(CONTINUATION).map(readEscapes).join('');
+  return readEscapes(body);
 }
 
 // --- values -----------------------------------------------------------------------------
