@@ -287,7 +287,8 @@ const DOCUMENT_ELEMENT = {};
 // selector does not compile.
 // outer: the enclosing @scope's, or null (a nested scope's roots and
 // elements are in it too).
-function scopeOf(rule, ss, outer, root) {
+// spec31: jsdom 31's selector grammar.
+function scopeOf(rule, ss, outer, root, spec31) {
   const { start, end } = rule[S];
   try {
     const owner = ss.ownerNode?.[S].parent ?? null;
@@ -297,8 +298,8 @@ function scopeOf(rule, ss, outer, root) {
     return {
       // (& in a prelude is :scope: the enclosing scope's root for a start,
       // this scope's for an end)
-      start: start === null ? null : compileRuleSelector(scopeTokens(start).text),
-      end: end === null ? null : compileRuleSelector(scopeTokens(end).text),
+      start: start === null ? null : compileRuleSelector(scopeTokens(start).text, false, spec31),
+      end: end === null ? null : compileRuleSelector(scopeTokens(end).text, false, spec31),
       owner: owner !== null && owner[S].type === ELEMENT_NODE ? owner : constructedOwner,
       outer,
     };
@@ -996,7 +997,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
           outerScope = scope;
         if (proto === ss.protos.CSSLayerBlockRule) layer = layerNamed(layers, layer, rule[S].name);
         else if (proto === ss.protos.CSSScopeRule) {
-          scope = scopeOf(rule, ss, outerScope, root);
+          scope = scopeOf(rule, ss, outerScope, root, compat?.treeScopedSheets === true);
           if (scope === null) {
             scope = outerScope;
             continue;

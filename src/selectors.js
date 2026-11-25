@@ -198,7 +198,9 @@ class Parser {
     // A type selector's namespace: *| (any, as without one) or | (none).
     // Declared prefixes need @namespace, which the DOM API cannot have.
     let ns;
-    if (this.peek() === '*' && this.peek(1) === '|' && this.peek(2) !== '=') {
+    // (jsdom 31: *||td is * and a column combinator)
+    const column = grammar31 && this.peek(2) === '|';
+    if (this.peek() === '*' && this.peek(1) === '|' && this.peek(2) !== '=' && !column) {
       this.i += 2;
       ns = '*';
     } else if (this.peek() === '|' && this.peek(1) !== '=') {
@@ -524,7 +526,7 @@ class Parser {
     do {
       if (this.peek() === '*' && lower.startsWith('view-transition-')) {
         this.i++;
-        arg.push('*');
+        arg.push(null); // (the wildcard; an escaped \* is a name)
       } else arg.push(this.ident() ?? this.fail());
     } while (lower === 'part' && this.skipWs() && this.peek() !== ')');
     this.skipWs();
@@ -952,7 +954,7 @@ let compilingDynamic = false;
 // selectors using them make computed styles follow text changes
 // (cascade.js buildIndex, textDependent). :empty from jsdom 31, where an
 // empty text child is not content.
-const TEXT_DEPENDENT = new Set(['dir', 'valid', 'invalid', 'placeholder-shown', 'empty']);
+const TEXT_DEPENDENT = new Set(['dir', 'valid', 'invalid', 'placeholder-shown', 'empty', 'blank']);
 let compilingText = false;
 
 function compilePseudo({ name, arg }) {
@@ -1117,7 +1119,10 @@ function compilePseudo({ name, arg }) {
       // (jsdom 31: a list of ranges)
       if (Array.isArray(arg)) {
         const tests = arg.map(({ ident, string }) => compilePseudo({ name: 'lang', arg: ident ?? string }));
-        return (el) => tests.some((t) => t(el));
+        return (el) => {
+          for (let i = 0; i < tests.length; i++) if (tests[i](el)) return true;
+          return false;
+        };
       }
       const lang = String(arg).toLowerCase();
       return (el) => {
@@ -1420,14 +1425,17 @@ function complexSpecificity({ parts }) {
 // its own, with its specificity. Throws on an invalid selector.
 const ruleCache = new Map();
 
-// (scoping: jsdom 31's cascade, hostScoping)
-export function compileRuleSelector(selector, scoping = false) {
+// (scoping: jsdom 31's cascade, hostScoping; spec31: jsdom 31's grammar,
+// without scoping for @scope's selectors)
+export function compileRuleSelector(selector, scoping = false, spec31 = scoping) {
   const text = String(selector);
-  const key = scoping ? `\0${text}` : text;
+  let key = text;
+  if (scoping) key = `\0${text}`;
+  else if (spec31) key = `\u0001${text}`;
   let entries = ruleCache.get(key);
   if (!entries) {
     hostScoping = scoping;
-    grammar31 = scoping;
+    grammar31 = spec31;
     try {
       const parser = new Parser(text);
       const list = parser.list();
@@ -1688,7 +1696,7 @@ function serializeTest(t) {
     }
     case 'never':
     case 'slotted':
-      return `::${t.element}${elementArgument(t)}`;
+      return `::${serializeName31(t.element)}${elementArgument(t)}`;
     default:
       return t.nesting ? '&' : `:${t.name}${pseudoArgument(t)}`;
   }
@@ -1697,7 +1705,7 @@ function serializeTest(t) {
 function elementArgument(t) {
   if (t.arg === null || t.arg === undefined) return '';
   if (t.element === 'slotted') return `(${serializeCompound(t.arg)})`;
-  return `(${t.arg.map((name) => (name === '*' ? '*' : serializeName31(name))).join(' ')})`;
+  return `(${t.arg.map((name) => (name === null ? '*' : serializeName31(name))).join(' ')})`;
 }
 
 function pseudoArgument({ name, arg }) {

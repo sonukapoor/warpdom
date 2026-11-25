@@ -282,14 +282,14 @@ parity(
     return names.map((s) => {
       const all = (root) => {
         try {
-          return [...root.querySelectorAll(s)].map((e) => e.id).join(',');
+          return [...root.querySelectorAll(s)].map((e) => `${e.localName}#${e.id}`).join(',');
         } catch (e) {
           return e.name;
         }
       };
       let closest;
       try {
-        closest = h1.closest(s)?.id ?? null;
+        closest = h1.closest(s)?.localName ?? null;
       } catch (e) {
         closest = e.name;
       }
@@ -390,6 +390,50 @@ parity(
     w.document.head.append(style);
     const computed = w.getComputedStyle(w.document.body);
     return list.map((s, i) => [s, w.CSS.supports(`selector(${s})`), computed.getPropertyValue(`--s${i}`)]);
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31 (#346 review): U+00A0 alone, *||, escapes in pseudo-elements, :lang() lists, :blank and text',
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent = '\u00a0 { color: red } a::-webkit-\\! {} a::highlight(\\*) {} a::part(\\*) {} b {}';
+    d.head.append(style);
+    const texts = [...style.sheet.cssRules].map((r) => r.selectorText);
+    const inserted = d.createElement('style');
+    d.head.append(inserted);
+    inserted.sheet.insertRule('\u00a0 { color: red }', 0);
+    d.body.innerHTML =
+      '<table><tr><td id=t></td></tr></table><div lang=en><i id=e></i></div><div lang=fr><i id=f></i></div>' +
+      '<div lang=de><i id=g></i></div><textarea id=x></textarea>';
+    const ids = (s) => [...d.querySelectorAll(s)].map((e) => e.id);
+    const area = d.getElementById('x');
+    area.append('');
+    const rule = d.createElement('style');
+    rule.textContent = 'textarea:blank { color: red }';
+    d.head.append(rule);
+    const colors = [w.getComputedStyle(area).color];
+    area.firstChild.data = 'x';
+    colors.push(w.getComputedStyle(area).color);
+    area.value = '';
+    colors.push(w.getComputedStyle(area).color);
+    return [texts, inserted.sheet.cssRules[0].selectorText, ids('*||td'), ids('i:lang(en, fr)'), colors];
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31 (#346 review): @scope's selectors in its grammar",
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent = '@scope (:heading) { p { color: red } } @scope (div) to (:heading) { p { color: blue } }';
+    d.head.append(style);
+    d.body.innerHTML = '<h1><p id=a></p></h1><div><h2><p id=b></p></h2><p id=c></p></div>';
+    const color = (id) => w.getComputedStyle(d.getElementById(id)).color;
+    return [style.sheet.cssRules.length, color('a'), color('b'), color('c')];
   },
   { jsdom: 31 },
 );

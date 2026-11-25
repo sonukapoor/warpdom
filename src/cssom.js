@@ -204,7 +204,7 @@ export function parseRules(text, strict = false, nested = false, css31 = false) 
     }
     const end = preludeEnd(text, i);
     const raw = text.slice(i, end);
-    const prelude = stripComments(raw).trim();
+    const prelude = css31 ? cssTrim(stripComments(raw)) : stripComments(raw).trim();
     let body = null;
     if (text[end] === '{') {
       const close = blockEnd(text, end, nested);
@@ -510,6 +510,8 @@ const ACEMIR_RULES = new WeakSet();
 // @font-palette-values, @position-try, @view-transition.
 const RULES31 = new WeakSet();
 const CSS_SPACE = /[ \t\n\r\f]/;
+// (only CSS whitespace: a U+00A0 stays, a type selector)
+const cssTrim = (text) => text.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
 // The rule interfaces whose prototypes have a cssRules data property there.
 const OWN_RULE_LISTS = new Set(['CSSMediaRule', 'CSSSupportsRule', 'CSSContainerRule', 'CSSLayerBlockRule']);
 
@@ -1297,7 +1299,7 @@ function scopePrelude31(text) {
   for (const selector of [start, end])
     if (selector !== undefined) {
       try {
-        compileRuleSelector(selector.replace(/&/g, ':scope'));
+        compileRuleSelector(selector.replace(/&/g, ':scope'), false, true);
       } catch {
         return null;
       }

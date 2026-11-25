@@ -9054,8 +9054,8 @@ jsdom 31's selectors (black box, 31.0.1):
   refused.
 - Matching: most of the newly known names match nothing; :blank an
   empty input, :paused a video not playing, :local-link a link to the
-  document's own URL, :heading h1 to h6, & the scope (closest(&) is the
-  element, a document query none).
+  document's own URL, :heading h1 to h6, & the scope as :scope (a
+  document query's & is the root element; corrected in review).
 Found and left (1.0 profiles, not 31): querySelector's validity in
 jsdom 20 to 30 follows the engine version npm installs (nwsapi 2.2.x for
 20 to 22 and 24 to 26, @asamuzakjp/dom-selector for 23 and 27 to 30),
@@ -9101,5 +9101,16 @@ Speed (node 22.17.1, 6 interleaved runs, medians):
 - bench/load.js (both trees in one location, 8 alternating runs): cold
   load 32.25 and 32.6 ms, first window 2.35 and 2.48, later windows 0.2145
   and 0.217 (noise).
+Review (2026-11-25, CodeRabbit and Copilot on 911583b, reproduced on
+31.0.1): a prelude is trimmed of CSS whitespace only in 31 (a U+00A0
+alone is a type selector, in a sheet and insertRule); *||td is * and a
+column combinator, not the namespace *|; :blank is text-dependent (a
+textarea's text read as its value); @scope's selectors take jsdom 31's
+grammar (@scope (:heading)); a pseudo-element's name and an escaped *
+in ::part() or ::highlight() are written with their escapes (::-webkit-\!,
+::highlight(\*)); :lang() lists matched without a closure per call. Not
+reproduced: & in a document query is the root element in jsdom 31 too
+(the probe that said "none" joined ids, and the root has none; the test
+now names elements).
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.
