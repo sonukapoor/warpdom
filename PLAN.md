@@ -9009,5 +9009,10 @@ Round 7: a backslash the end of the value leaves in a string is dropped
 ("abc\ is "abc"); a backslash before CR LF escapes both, in initial
 values and the <string> check; an escaped e that a sign or digit follows
 stays escaped when units are read (calc(1\65+2) is no 1e+2).
+Round 8: a newline escaped ends the escape before it ("\41\<CR LF>B" is
+"AB", not one escape \41B): a string's pieces between continuations are
+read one by one; the comment scan steps over an escaped CR LF whole.
+Found and left for F3 (custom properties too): jsdom 31 keeps CR LF in a
+specified value set with setProperty ("a\<CR LF>b"), warpdom has LF.
 Next: F3 (the smaller details, the regular-property differences above),
 then NEWEST_MODELED_JSDOM to 31.

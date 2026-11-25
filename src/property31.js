@@ -147,16 +147,18 @@ function brokenString(token) {
   }
   return false;
 }
+// A backslash and a newline, not after a backslash (\\ is an escaped one).
+const CONTINUATION = /(?<=(?:^|[^\\])(?:\\\\)*)\\(?:\r\n|[\n\r\f])/;
 // A string token's value: its escapes read, without its quotes.
 function stringValue(token) {
   const quote = token[0];
   let body = token.slice(1);
   if (body.endsWith(quote) && !/(?:^|[^\\])(?:\\\\)*\\$/.test(body.slice(0, -1))) body = body.slice(0, -1);
-  // (a newline escaped is none, CR LF one too; a backslash the end
-  // leaves is dropped: "abc\; #345 review)
-  body = body.replace(/\\(?:\r\n|[\n\r\f])/g, '');
+  // (a backslash the end leaves is dropped: "abc\; a newline escaped is
+  // none, CR LF one too, and ends the escape before it: "\41\<LF>B" is
+  // "AB"; #345 review)
   if (/(?:^|[^\\])(?:\\\\)*\\$/.test(body)) body = body.slice(0, -1);
-  return readEscapes(body);
+  return body.split(CONTINUATION).map(readEscapes).join('');
 }
 
 // --- values -----------------------------------------------------------------------------
@@ -223,7 +225,8 @@ function withoutComments(text) {
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (c === '"' || c === "'") {
-      for (i++; i < text.length && text[i] !== c && text[i] !== '\n'; i++) if (text[i] === '\\') i++;
+      for (i++; i < text.length && text[i] !== c && text[i] !== '\n'; i++)
+        if (text[i] === '\\') i += text[i + 1] === '\r' && text[i + 2] === '\n' ? 2 : 1;
     } else if (c === '\\') i++;
     else if ((c === 'u' || c === 'U') && /^url\([ \t\n\r\f]*[^"' \t\n\r\f]/i.test(text.slice(i, i + 64))) {
       // (an escaped ) is in the url: url(a\)/*b.png); #345 review)

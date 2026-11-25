@@ -931,3 +931,31 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'review round 8: an escape before a newline escaped ends there (#345 review)',
+  (w) => {
+    const get = tree(w);
+    const out = [];
+    for (const [syntax, initial] of [
+      ['<string>', '"\\41\\\r\nB"'],
+      ['<string>', '"\\41\\\nB"'],
+      ['*', '"\\41\\\r\nB"'],
+    ]) {
+      const name = `--n${out.length}`;
+      out.push(
+        attempt(() => w.CSS.registerProperty({ name, syntax, inherits: false, initialValue: initial })),
+        get('p', name),
+      );
+    }
+    const text = '@property --a { syntax: "<string>"; inherits: false; initial-value: "\\41\\\r\nB"; }';
+    out.push(ruleOf(w, text), valuesOf(w, text));
+    // (the computed value; the specified one keeps CR LF in jsdom 31: part F3)
+    w.CSS.registerProperty({ name: '--s', syntax: '<string>', inherits: false, initialValue: '"x"' });
+    const p = w.document.getElementById('p');
+    p.style.setProperty('--s', '"\\41\\\nB"');
+    out.push(get('p', '--s'));
+    return out;
+  },
+  { jsdom: 31 },
+);
