@@ -203,3 +203,34 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#348 review): an escaped quote outside a string is no string; a string drops escaped newlines',
+  (w) => {
+    const d = w.document;
+    const media = sheetOf(d, '@media all {}').cssRules[0].media;
+    return ['foo(a\\"b)', "(x: a\\'b)", '(x: "a\\\nb")', '(x: "\\41\\\nB")', '(x: "a\\\r\nb")', '(x: "a\\\fb")'].map(
+      (q) => {
+        media.mediaText = q;
+        const written = media.mediaText;
+        media.mediaText = written;
+        return [written, media.mediaText];
+      },
+    );
+  },
+  { jsdom: 31 },
+);
+
+// An escape is one token when a sheet is split into rules: a\"b {} is a
+// rule, not a string running to the end of the sheet (#348 review).
+for (const jsdom of [27, 30, 31])
+  parity(
+    `jsdom ${jsdom}: an escaped quote or brace in a selector or value does not end the sheet`,
+    (w) => {
+      const d = w.document;
+      return ['a\\"b{color:red} c{}', "a\\'b{} c{}", 'a\\{b{} c{}', 'a{--x:a\\"b} b{color:red}'].map((text) =>
+        [...sheetOf(d, text).cssRules].map((r) => r.cssText),
+      );
+    },
+    { jsdom },
+  );

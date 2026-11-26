@@ -9277,3 +9277,12 @@ query's whitespace is collapsed outside its strings only, a string
 written as jsdom 31 writes it ("a\tb" is "a\9 b"), and a container
 query keeps what it does not read as written ((x:  "a  b"), foo("a  b"
 c)).
+
+Review round 4 (#348, reproduced on 31.0.1): an escape outside a string
+is kept as written in a media query (foo(a\"b) stayed foo(a\"b")), and a
+string drops a backslash before a newline (LF, CR LF, CR, FF; "\41\<LF>B"
+is "AB"). A sheet is split into rules with an escape as one token, in
+every profile: a\"b{} c{} was read as a string to the end of the sheet,
+so no rule was kept (main, all versions). Black box 20 to 31 on nine
+sheets: 75 differences before, 55 after (31: 4 to 0; 27 to 30 fewer;
+20 to 26 unchanged, where jsdom's sheet is null for these texts).

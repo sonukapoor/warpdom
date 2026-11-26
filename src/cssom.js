@@ -73,10 +73,12 @@ function required(count, n, iface, method) {
 
 // --- parsing ---------------------------------------------------------------------
 
-// Index after a comment or string starting at i, or after an unquoted
-// url() whose "(" is at i (the caller has read the url name), or i if
-// none starts there.
+// Index after a comment, string or escape starting at i, or after an
+// unquoted url() whose "(" is at i (the caller has read the url name), or
+// i if none starts there. (An escape: a\"b{} is one rule, not a string
+// running to the end; #348 review.)
 function skipToken(text, i) {
+  if (text[i] === '\\') return Math.min(i + 2, text.length);
   if (text[i] === '/' && text[i + 1] === '*') {
     const end = text.indexOf('*/', i + 2);
     return end < 0 ? text.length : end + 2;
@@ -124,7 +126,7 @@ function blockEnd(text, open, nested = false) {
   let closer = 0;
   for (let i = open; i < text.length; i++) {
     const c = text.charCodeAt(i);
-    if (c === 47 || c === 40 || c === 34 || c === 39) {
+    if (c === 47 || c === 40 || c === 34 || c === 39 || c === 92) {
       const next = skipToken(text, i);
       if (next !== i) {
         i = next - 1;

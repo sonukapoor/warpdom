@@ -186,20 +186,40 @@ function strayCloser(text, from, to) {
 // jsdom 31 writes them ("a\tb" is "a\9 b"; #348 review). asWritten (a
 // container query's, serializeMedium31): the text as it is, trimmed.
 let asWritten = false;
+const WHITESPACE_RUN = /[ \t\n\r\f]+/g;
+const NEWLINE = new Set(['\n', '\r', '\f']);
 const collapse = (text) => {
   const trimmed = cssTrim(text);
   if (asWritten) return trimmed;
-  if (!trimmed.includes('"') && !trimmed.includes("'")) return trimmed.replace(/[ \t\n\r\f]+/g, ' ');
-  return trimmed
-    .split(/("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)/)
-    .map((piece, i) =>
-      i % 2 === 0
-        ? piece.replace(/[ \t\n\r\f]+/g, ' ')
-        : serializeString31(
-            decodeEscapes(piece.slice(1, piece.endsWith(piece[0]) && piece.length > 1 ? -1 : undefined)),
-          ),
-    )
-    .join('');
+  if (!/["'\\]/.test(trimmed)) return trimmed.replace(WHITESPACE_RUN, ' ');
+  // An escape outside a string stays as written (foo(a\"b) is no string;
+  // #348 review); in a string, a backslash before a newline is dropped.
+  let out = '';
+  let run = 0;
+  for (let i = 0; i < trimmed.length;) {
+    const c = trimmed[i];
+    if (c === '\\') {
+      out += trimmed.slice(run, i).replace(WHITESPACE_RUN, ' ') + trimmed.slice(i, i + 2);
+      i = run = i + 2;
+    } else if (c === '"' || c === "'") {
+      out += trimmed.slice(run, i).replace(WHITESPACE_RUN, ' ');
+      let value = '';
+      let from = i + 1;
+      let j = from;
+      while (j < trimmed.length && trimmed[j] !== c && !NEWLINE.has(trimmed[j])) {
+        if (trimmed[j] !== '\\') j++;
+        else if (NEWLINE.has(trimmed[j + 1])) {
+          value += decodeEscapes(trimmed.slice(from, j));
+          j += trimmed[j + 1] === '\r' && trimmed[j + 2] === '\n' ? 3 : 2;
+          from = j;
+        } else j += 2;
+      }
+      out += serializeString31(value + decodeEscapes(trimmed.slice(from, Math.min(j, trimmed.length))));
+      if (trimmed[j] === c) j++;
+      i = run = j;
+    } else i++;
+  }
+  return out + trimmed.slice(run).replace(WHITESPACE_RUN, ' ');
 };
 
 // --- the grammar -------------------------------------------------------------------------
