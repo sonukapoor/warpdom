@@ -731,3 +731,39 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#348 review): an escape ends a name with its space, a comment ends at its first */, an item kept as text still matches its list',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p class=ab id=p></p><b id=b></b>';
+    const out = [];
+    for (const selector of [
+      '.\\61 /**/b',
+      ':is(1x/* /* */, b)',
+      ':is(1x/*a/*b*/, b)',
+      ':is(1x/*a/*b*/ , b)',
+      ':is(1x\\ , b)',
+    ]) {
+      let count;
+      try {
+        count = d.querySelectorAll(selector).length;
+      } catch (e) {
+        count = e.name;
+      }
+      const style = d.createElement('style');
+      style.textContent = `${selector} { color: red }`;
+      d.head.append(style);
+      const rule = style.sheet.cssRules[0];
+      out.push([
+        selector,
+        count,
+        rule ? rule.selectorText : null,
+        ...['p', 'b'].map((id) => w.getComputedStyle(d.getElementById(id)).color),
+      ]);
+      style.remove();
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);

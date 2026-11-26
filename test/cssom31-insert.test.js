@@ -173,3 +173,19 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#348 review): an at-rule named past scope is unknown; a string in a style() query stays as written',
+  (w) => {
+    const d = w.document;
+    const unknown = sheetOf(d, '@scopeé {} @scope\\41 {} p { color: red }');
+    const container = sheetOf(d, '@container style(--x: "style(--y:1)") { p {} }').cssRules[0];
+    return [
+      [...unknown.cssRules].map((r) => r.cssText),
+      container.conditionText,
+      container.containerQuery,
+      JSON.stringify(container.conditions),
+    ];
+  },
+  { jsdom: 31 },
+);

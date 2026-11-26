@@ -22,6 +22,7 @@ import { serializeName31, serializeString31 } from './parse31.js';
 // --- tokens and parsing --------------------------------------------------------
 
 const WS = /[ \t\n\r\f]/;
+const HEX_DIGIT = /[0-9a-fA-F]/;
 // (by code unit: a letter, _, or anything from U+0080; a name also takes
 // digits and -; '' past the end is neither)
 const isNameStart = (c) => {
@@ -61,8 +62,17 @@ function decomment31(source, parser) {
       continue;
     }
     let to = i + 1;
-    if (c === '\\') to = Math.min(i + 2, source.length);
-    else if (c === '"' || c === "'") {
+    if (c === '\\') {
+      // (a hex escape with the whitespace that ends it: .\61 /**/b is two
+      // names, #348 review)
+      to = Math.min(i + 2, source.length);
+      if (HEX_DIGIT.test(source[i + 1] ?? '')) {
+        to = i + 1;
+        while (to < source.length && to - i <= 6 && HEX_DIGIT.test(source[to])) to++;
+        if (source[to] === '\r' && source[to + 1] === '\n') to += 2;
+        else if (to < source.length && WS.test(source[to])) to++;
+      }
+    } else if (c === '"' || c === "'") {
       while (to < source.length && source[to] !== c && source[to] !== '\n') to += source[to] === '\\' ? 2 : 1;
       to = Math.min(to + 1, source.length);
     }
@@ -441,8 +451,11 @@ class Parser {
         if ((end - 1 - k) % 2 === 0) spaced = true;
         end--;
       } else if (end - from >= 4 && source.endsWith('*/', end)) {
-        const open = source.lastIndexOf('/*', end - 3);
-        if (open < from) break;
+        // (the comment this */ ends opens at the first /* after the
+        // comment before it: a comment holds /*, #348 review)
+        const before = source.lastIndexOf('*/', end - 3);
+        const open = source.indexOf('/*', Math.max(from, before + 2));
+        if (open < from || open > end - 4) break;
         end = open;
       } else break;
     }
@@ -1883,6 +1896,9 @@ function pseudoArgument({ name, arg }) {
       return `(${serializeName31(arg)})`;
     case 'is':
     case 'where':
+      // (items kept as text need not read back as the list did, :is(1x\ , b)
+      // as :is(1x\, b): the rule is matched by its text as written)
+      if (arg.order31 !== undefined) lossy31 = true;
       if (arg.order31 !== undefined)
         return `(${arg.order31.map((item) => (typeof item === 'string' ? item : serializeComplex(item))).join(', ')})`;
       return `(${serializeList31(arg)})`;

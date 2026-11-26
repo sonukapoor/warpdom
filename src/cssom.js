@@ -829,12 +829,7 @@ function containerParts31(prelude) {
     }
     let query = '';
     if (rest !== '') {
-      // (a style() query written as a declaration: style(--x: 1))
-      query = serializeMedium31(
-        rest.replace(/\bstyle\(\s*(--[^:\s()]+)\s*(?::\s*([^()]*?))?\s*\)/gi, (_, n, v) =>
-          v === undefined ? `style(${n})` : `style(${n}: ${v})`,
-        ),
-      );
+      query = serializeMedium31(styleQueries31(rest));
       if (query === 'not all') return null;
     }
     if (name === '' && query === '') return null;
@@ -847,6 +842,67 @@ function containerParts31(prelude) {
     containerQuery: one?.query ?? '',
     conditions: Object.freeze(conditions),
   };
+}
+// A container query's style() queries written as declarations,
+// style(--x: 1) (Style( lowercased); strings in it as they are (#348
+// review: style(--x: "style(--y:1)") keeps the string).
+function styleQueries31(text) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") i = stringEnd(text, i) - 1;
+    else if (
+      (c === 's' || c === 'S') &&
+      text.slice(i, i + 6).toLowerCase() === 'style(' &&
+      !/[\w\u0080-\uffff-]/.test(text[i - 1] ?? '')
+    ) {
+      const close = groupEnd(text, i + 5);
+      if (close < 0) break;
+      const inner = text.slice(i + 6, close);
+      const colon = topLevelColon(inner);
+      const name = cssTrim(colon < 0 ? inner : inner.slice(0, colon));
+      const declaration = colon < 0 ? name : `${name}: ${cssTrim(inner.slice(colon + 1))}`;
+      out += `${text.slice(from, i)}style(${declaration})`;
+      from = close + 1;
+      i = close;
+    }
+  }
+  return out + text.slice(from);
+}
+// Where a string that opens at i ends (past its quote; at a newline or the
+// end where it is left open).
+function stringEnd(text, i) {
+  const quote = text[i];
+  let k = i + 1;
+  while (k < text.length && text[k] !== quote && text[k] !== '\n') k += text[k] === '\\' ? 2 : 1;
+  return Math.min(k + 1, text.length);
+}
+// The ) that closes the ( at open (strings and escapes skipped), or -1.
+function groupEnd(text, open) {
+  let depth = 0;
+  for (let k = open; k < text.length; k++) {
+    const c = text[k];
+    if (c === '\\') k++;
+    else if (c === '"' || c === "'") k = stringEnd(text, k) - 1;
+    else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return k;
+  }
+  return -1;
+}
+// The first : outside strings and parentheses, or -1.
+function topLevelColon(text) {
+  let depth = 0;
+  for (let k = 0; k < text.length; k++) {
+    const c = text[k];
+    if (c === '\\') k++;
+    else if (c === '"' || c === "'") k = stringEnd(text, k) - 1;
+    else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === ':' && depth === 0) return k;
+  }
+  return -1;
 }
 // text split at its commas outside parentheses, strings and comments.
 function splitTopLevel(text) {
@@ -935,7 +991,11 @@ function createRule(protos, record, sheet, parentRule) {
     // (div:has(> p))), and to( is a function, not to and a (.
     if (MEDIA31.has(protos.MediaList)) {
       // (from the text as written: its comments separate tokens)
-      const parts = scopePrelude31(cssTrim(record.raw.slice(RAW_AT.exec(record.raw)[0].length)));
+      // (an at-rule whose name only starts with scope is not one: @scopeé,
+      // @scope\41; #348 review)
+      const keyword = RAW_AT.exec(record.raw);
+      if (keyword === null || keyword[1].toLowerCase() !== 'scope') return null;
+      const parts = scopePrelude31(cssTrim(record.raw.slice(keyword[0].length)));
       if (parts === null) return null;
       rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, parts);
     } else {

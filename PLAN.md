@@ -9254,3 +9254,12 @@ Decided (2026-11-26), not in F3b:
   expansion, serialization order), and tests hardly use @page; recorded,
   not modeled.
 F3b then: Next F3c (the values), then NEWEST_MODELED_JSDOM to 31.
+Review round 1 (#348, all reproduced on 31.0.1): a hex escape is read
+with the whitespace that ends it (.\61 /**/b is two names, no selector);
+a trailing comment opens at the first /* after the comment before it (a
+comment may hold /*: :is(1x/*a/*b*/, b) is :is(1x, b)); a forgiving list
+with an item kept as text marks its serialization lossy, so the rule is
+matched by its text as written (:is(1x\ , b) still matches b); an
+at-rule whose name only starts with scope (@scopeé, @scope\41) is an
+unknown rule, not a TypeError; a style() query is normalized outside
+strings only (style(--x: "style(--y:1)") keeps the string).
