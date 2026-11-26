@@ -4506,11 +4506,11 @@ function parseInto31(decls, text, mode, surface, asWritten) {
       map ??= preprocessMap(written);
       const slice = source.slice(decl.at, decl.end);
       // (the written part: all of it, or up to a backslash at the end that
-      // reads as U+FFFD, a\ is a\uFFFD; then what closing it added; #349
-      // review)
+      // closing it dropped: a\ is a\uFFFD, "a\ is "a"; then what closing
+      // it added; #349 review)
       let kept = -1;
       if (decl.value.startsWith(slice)) kept = slice.length;
-      else if (slice.endsWith('\\') && decl.value.startsWith(`${slice.slice(0, -1)}\uFFFD`)) kept = slice.length - 1;
+      else if (slice.endsWith('\\') && decl.value.startsWith(slice.slice(0, -1))) kept = slice.length - 1;
       if (kept !== -1) decl.value = written.slice(map[decl.at], map[decl.at + kept]) + decl.value.slice(kept);
     }
     const name = decl.custom ? decl.name : decl.name.toLowerCase();
@@ -5827,7 +5827,11 @@ const SYNTAX_SENSITIVE = /[/;"'()[\]{}\\!]/;
 function writtenValue(name, raw, s) {
   // (jsdom 31: one value as CSS Syntax 3 reads it, parse31.js)
   if (s.surface?.cssom31 === true && SYNTAX_SENSITIVE.test(raw)) {
-    const value = parseValue31(raw, name.startsWith('--'));
+    // (a custom property's value is read preprocessed, as a sheet's is:
+    // url(a<NUL>b) valid, "a<CR>b" a bad string; stored as given; #349
+    // review)
+    const custom = name.startsWith('--');
+    const value = parseValue31(custom ? preprocessCss(raw) : raw, custom);
     if (value === null) return INVALID;
     // (a custom property set so keeps its comments, closed: --x: /*a*/ a,
     // (a is (a))

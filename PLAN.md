@@ -9234,3 +9234,16 @@ gap, flex-basis, border-radius, font-size, line-height; margin is not),
 from the grammar's [0,∞] ranges; hypot() is not resolved here
 (hypot(3em, 4px) is 30.2655px in jsdom 31); abs(-1em) is declared as
 calc(1em) here, abs(-1em) in jsdom 31.
+
+Review round 3 (#349, reproduced on 31.0.1): only calc(), min(), max()
+and clamp() of one value are that value when computed (round 2 had
+widened the math names, so scale(cos(0deg)) became scale(0deg)), dppx
+too (image-set("a.png" calc(1x)) is 1dppx); a custom property set with
+setProperty is read preprocessed, as a sheet's is, and stored as given
+(url(a<NUL>b) valid, "a<CR>b" a bad string, as in jsdom 31); a value
+whose final backslash closing drops (a string's: "a\ is "a") keeps its
+written text before it from style and cssText (NUL, CR LF). Sweep: 58
+of 4410, as before. Left for later with the round 2 items: jsdom 31
+declares trig and sign() simplified (cos(0deg) is calc(1)), rejects
+sin(1px) for width, and computes a number-only calc() unwrapped
+(scale(calc(-1)) is scale(-1)).

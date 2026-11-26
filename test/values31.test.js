@@ -1,6 +1,9 @@
 // jsdom 31's computed values (black box, 31.0.1; #269 part F3c): every
 // length absolute (px), angle in deg and time in s, in any value; a math
 // function that resolves to one value unwrapped.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { createWindow } from '../src/node.js';
 import { parity } from './parity.js';
 
 const DECLARATIONS = [
@@ -76,6 +79,10 @@ const DECLARATIONS = [
   'background-image: image-set("a, \\" " 1x, "b.png" 2x)',
   'width: calc(1px +(2px))',
   'width: calc(1px + (2px))',
+  'background-image: image-set("a.png" calc(1x))',
+  'background-image: image-set("a.png" calc(2x + 96dpi))',
+  'transform: rotate(abs(-10deg)) translateX(1em)',
+  'width: min(1em)',
 ];
 
 parity(
@@ -261,3 +268,35 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31 reads a custom property's value as a sheet does, through setProperty too, and keeps it as written (#349 review)",
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const value of ['"a\u0000b\\', '"a\rb\\', '"a\\\r\nb\\', 'url(a\u0000b)', '"a\rb"', '"a\fb', 'a\u0000b\\']) {
+      const el = d.createElement('div');
+      el.style.setProperty('--x', value);
+      const set = el.style.getPropertyValue('--x');
+      el.style.cssText = `--x: ${value}`;
+      const text = el.style.getPropertyValue('--x');
+      el.setAttribute('style', `--x: ${value}`);
+      out.push(JSON.stringify([set, text, el.style.getPropertyValue('--x')]));
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+// (not a parity case: jsdom 31 also declares cos(0deg) as calc(1), which
+// this does not yet; #349 review)
+test('jsdom 31: only calc(), min(), max() and clamp() of one value are that value when computed', () => {
+  const w = createWindow({ jsdom: '31.0.1' });
+  const el = w.document.createElement('div');
+  w.document.body.append(el);
+  el.style.transform = 'scale(cos(0deg))';
+  el.style.rotate = 'calc(1turn)';
+  const computed = w.getComputedStyle(el);
+  assert.notEqual(computed.transform, 'scale(0deg)');
+  assert.equal(computed.rotate, '360deg');
+});

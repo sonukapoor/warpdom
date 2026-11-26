@@ -3213,6 +3213,7 @@ function absolutize31(element, name, value) {
   return pieces.join('');
 }
 const contextFree31 = new Map();
+const ONE_ARGUMENT31 = /^(?:calc|min|max|clamp)\($/i;
 // Whether text[at] continues an identifier after an escape: the escaped
 // character before it (a\+1turn), or the whitespace that ends a hex
 // escape (\31 1em). Backslashes counted, so \\1em is a dimension.
@@ -3287,7 +3288,10 @@ function resolveMath31(text, element, name, ctx) {
     const fn = text.slice(m.index, end + 1);
     const inner = fn.slice(m[0].length, -1).trim();
     let resolved = null;
-    if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px|deg|s)$/i.test(inner)) resolved = inner;
+    // (calc(), min(), max() or clamp() of one value is that value:
+    // calc(1dppx) is 1dppx; cos(0deg) is no 0deg; #349 review)
+    if (ONE_ARGUMENT31.test(m[0]) && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px|deg|s|dppx)$/i.test(inner))
+      resolved = inner;
     else {
       ctx ??= new LengthContext(element, false, name === 'line-height');
       const px = absoluteLength(fn, ctx);
@@ -3308,7 +3312,7 @@ function resolveMath31(text, element, name, ctx) {
 // 9px; #349 review), or null when that leaves it as it is. Read as a
 // length, an angle or a time (a property that takes each).
 const MATH_HOSTS31 = ['width', 'rotate', 'transition-duration'];
-const ONE_VALUE31 = /^calc\(([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px|deg|s))\)$/;
+const ONE_VALUE31 = /^calc\(([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px|deg|s|dppx))\)$/;
 function simplified31(fn) {
   for (const host of MATH_HOSTS31) {
     const out = canonical31(host, fn, true);
