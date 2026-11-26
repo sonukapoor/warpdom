@@ -9126,6 +9126,18 @@ rule index whose selectors use :local-link is now urlDependent and an
 element's cached values carry the document URL. Scope boundaries with
 non-CSS whitespace (U+00A0, U+2003, a vertical tab): all as jsdom 31.
 getComputedStyle, 200k reads (6 interleaved runs, medians): 68.6 to
-68.5 ms (30 profile), 74.65 to 75.85 ms (31; noise).
+68.5 ms (30 profile), 74.65 to 75.85 ms (31; noise). Fifth pass
+(c5c1e96): ::slotted(a:local-link) kept its values after a URL change
+(the shadow rule is taken out before the index's selectors are compiled,
+and the slotted element's key reads only its own tree's index); a shadow
+rule now says whether it reads the URL, and the document keeps urlRules
+once one does. :heading() levels are written with six significant
+digits (1234567 as 1234570, as jsdom 31). Not reproduced: inherited
+font sizes after a URL change (already followed), rule branches dropped
+by numeric serialization (none dropped; only the digits), :host rules
+reading the URL (no host is a link, :has() is refused in :host()).
+getComputedStyle 200k reads: 66.05 to 64.95 ms (30), 70.55 to 70.5 ms
+(31). Found for F3b: jsdom 31's querySelector, querySelectorAll,
+matches and closest throw "Invalid selector" for every invalid selector.
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.

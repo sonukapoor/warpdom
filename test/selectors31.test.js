@@ -502,3 +502,45 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#346 review): ::slotted(a:local-link) styles follow pushState and replaceState',
+  (w) => {
+    const d = w.document;
+    const here = new URL(w.location.href).pathname;
+    d.body.innerHTML = '<div id=h><a id=a href="/other">a</a></div><div id=g><a id=b href="/other">b</a></div>';
+    d.getElementById('h').attachShadow({ mode: 'open' }).innerHTML =
+      '<style>::slotted(a:local-link) { color: red }</style><slot></slot>';
+    d.getElementById('g').attachShadow({ mode: 'open' }).innerHTML =
+      '<style>b:local-link { color: blue } ::slotted(a:local-link) { color: green }</style><slot></slot><b></b>';
+    const read = () => ['a', 'b'].map((id) => w.getComputedStyle(d.getElementById(id)).color);
+    const out = [read()];
+    w.history.pushState(null, '', '/other');
+    out.push(read());
+    w.history.replaceState(null, '', here);
+    out.push(read());
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31 (#346 review): :heading() levels are written with six significant digits',
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent = [
+      ':heading(1, 1234567)',
+      ':heading(9999999)',
+      ':heading(-1234567)',
+      ':heading(9007199254740993)',
+      ':heading(123456789012345678901234)',
+      ':nth-child(1234567n+1234567)',
+    ]
+      .map((s) => `p, ${s} {}`)
+      .join(' ');
+    d.head.append(style);
+    return [...style.sheet.cssRules].map((r) => r.selectorText);
+  },
+  { jsdom: 31 },
+);

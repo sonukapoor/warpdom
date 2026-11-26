@@ -936,6 +936,12 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
         rest.push(selector);
         continue;
       }
+      // (:local-link in an element of another tree: the document's elements
+      // then follow its URL, cascadeCache)
+      if (found.url) {
+        index.urlDependent = true;
+        if (doc !== null) doc[S].urlRules = true;
+      }
       const host = found.kind === 'host';
       const sub = host ? (target.hostRules ??= pseudoTarget()) : (target.slottedRules ??= pseudoTarget());
       const match = host ? hostMatch(found.match, root) : slottedMatch(found.match, found.slot, root);
@@ -1678,9 +1684,12 @@ function cascadeCache(element) {
   // changes when any of them does.
   const outerRev = crossTree31 ? 1 + (ds.styleRev ?? 0) + cssomChanges.rev + (ds.textRev ?? 0) : 0;
   // :local-link follows the document's URL, which pushState and
-  // replaceState change with no other change (#346 review). (Values a
-  // shadow tree inherits from its host are read from the host's.)
-  const url = index.urlDependent === true ? documentURL(ds) : null;
+  // replaceState change with no other change (#346 review); across trees,
+  // once a shadow tree's ::slotted() or :host rules use it (urlRules,
+  // kept: they style elements outside it, whose own index says nothing of
+  // them). (Values a shadow tree inherits from its host are read from the
+  // host's.)
+  const url = index.urlDependent === true || (crossTree31 && ds.urlRules === true) ? documentURL(ds) : null;
   const inlineMap = inlineDeclarations(element);
   if (
     !cache ||

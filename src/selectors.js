@@ -1538,8 +1538,11 @@ export function shadowRule(selector) {
   if (rule === undefined) {
     hostScoping = true;
     grammar31 = true;
+    compilingURL = false;
     try {
       rule = shadowRuleOf(text);
+      // (whether it reads the document's URL: cascade.js shadowRules)
+      if (rule !== null) rule.url = compilingURL;
     } finally {
       hostScoping = false;
       grammar31 = false;
@@ -1734,7 +1737,9 @@ function pseudoArgument({ name, arg }) {
     case 'lang':
       return `(${arg.map(langRange).join(', ')})`;
     case 'heading':
-      return `(${arg.join(', ')})`;
+      // (six significant digits, as jsdom 31 writes numbers: 1234570,
+      // 1.23457e+23; #346 review)
+      return `(${arg.map((n) => String(Number(n.toPrecision(6)))).join(', ')})`;
     case 'active-view-transition-type':
       return `(${arg.map(serializeName31).join(', ')})`;
     case 'dir':
