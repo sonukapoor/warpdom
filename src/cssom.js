@@ -53,7 +53,7 @@ import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutCommen
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
-import { compileRuleSelector, matchText31, ruleSelector31, supportsSelector31 } from './selectors.js';
+import { compileRuleSelector, matchText31, ruleSelector31, scopeSelector31, supportsSelector31 } from './selectors.js';
 import { addAttributeStep } from './attributes.js';
 import {
   serializeMedium31,
@@ -73,10 +73,12 @@ function required(count, n, iface, method) {
 
 // --- parsing ---------------------------------------------------------------------
 
-// Index after a comment or string starting at i, or after an unquoted
-// url() whose "(" is at i (the caller has read the url name), or i if
-// none starts there.
+// Index after a comment, string or escape starting at i, or after an
+// unquoted url() whose "(" is at i (the caller has read the url name), or
+// i if none starts there. (An escape: a\"b{} is one rule, not a string
+// running to the end; #348 review.)
 function skipToken(text, i) {
+  if (text[i] === '\\') return Math.min(i + 2, text.length);
   if (text[i] === '/' && text[i + 1] === '*') {
     const end = text.indexOf('*/', i + 2);
     return end < 0 ? text.length : end + 2;
@@ -124,7 +126,7 @@ function blockEnd(text, open, nested = false) {
   let closer = 0;
   for (let i = open; i < text.length; i++) {
     const c = text.charCodeAt(i);
-    if (c === 47 || c === 40 || c === 34 || c === 39) {
+    if (c === 47 || c === 40 || c === 34 || c === 39 || c === 92) {
       const next = skipToken(text, i);
       if (next !== i) {
         i = next - 1;
@@ -177,8 +179,10 @@ function stripComments(text) {
 // `strict`, anything else is reported as { invalid: true } (insertRule's
 // garbage after a rule).
 // css31: jsdom 31's, where only CSS whitespace separates rules (a U+00A0
-// starts a selector: " .t", #269 part F3a).
-export function parseRules(text, strict = false, nested = false, css31 = false) {
+// starts a selector: " .t", #269 part F3a). cdo: whether <!-- and -->
+// between rules are skipped, as in a sheet (jsdom 31's insertRule reads
+// them as tokens: a rule's or what follows it; #269 part F3b).
+export function parseRules(text, strict = false, nested = false, css31 = false, cdo = true) {
   const records = [];
   const space = css31 ? CSS_SPACE : /[\s]/;
   let i = 0;
@@ -188,11 +192,11 @@ export function parseRules(text, strict = false, nested = false, css31 = false) 
       i = skipToken(text, i);
       continue;
     }
-    if (text.startsWith('<!--', i)) {
+    if (cdo && text.startsWith('<!--', i)) {
       i += 4;
       continue;
     }
-    if (text.startsWith('-->', i)) {
+    if (cdo && text.startsWith('-->', i)) {
       i += 3;
       continue;
     }
@@ -221,7 +225,8 @@ export function parseRules(text, strict = false, nested = false, css31 = false) 
       else if (strict) records.push({ invalid: true });
     } else if (body !== null && prelude !== '') {
       records.push({ selector: prelude, body, raw });
-    } else if (strict && prelude !== '') {
+    } else if (strict && (prelude !== '' || (css31 && body !== null))) {
+      // (jsdom 31: a block with no prelude is a rule it cannot read, {})
       records.push({ invalid: true });
     }
   }
@@ -541,6 +546,7 @@ function makeRule(protos, iface, sheet, parentRule, data) {
 const isA = (rule, iface) => Object.getPrototypeOf(rule) === rule[S].protos[iface];
 const isImport = (rule) => isA(rule, 'CSSImportRule');
 const isNamespace = (rule) => isA(rule, 'CSSNamespaceRule');
+const isLayerStatement = (rule) => isA(rule, 'CSSLayerStatementRule');
 
 // A list of rules. At the top level of a sheet @import rules must come
 // first, then @namespace rules; inside other rules both are dropped (CSS
@@ -577,9 +583,18 @@ function ruleList(protos, body, sheet, parent) {
   if (parent === null && MEDIA31.has(protos.MediaList) && tooDeep(body ?? '')) return rules;
   let prefixOnly = parent === null; // only @import and @namespace rules so far
   let namespaces = false;
-  for (const record of parseRules(body ?? '', false, nestedBlocks(protos), RULES31.has(protos.CSSRule))) {
+  // (jsdom 31: @layer statements before them too, which after them end
+  // the prefix as any other rule does; black box, 31.0.1)
+  const spec31 = RULES31.has(protos.CSSRule);
+  let layersOnly = spec31 && prefixOnly;
+  for (const record of parseRules(body ?? '', false, nestedBlocks(protos), spec31)) {
     const rule = createRule(protos, record, sheet, parent);
     if (!rule) continue;
+    if (layersOnly && isLayerStatement(rule)) {
+      rules.push(rule);
+      continue;
+    }
+    layersOnly = false;
     if (isImport(rule)) {
       if (!prefixOnly || namespaces) continue;
     } else if (isNamespace(rule)) {
@@ -796,6 +811,124 @@ function containerParts(prelude) {
   return { conditionText: prelude, containerName: named ? m[1] : '', containerQuery: named ? m[2] : prelude };
 }
 
+// jsdom 31's (black box, 31.0.1): a comma-separated list of conditions,
+// each [ <container-name> ] [ <query> ], a query written as its media
+// queries are (conditions31.js: (width > 1px), (w>1px) kept), a name as
+// written (none, and, or drop the rule; not and style() start a query);
+// containerName and containerQuery the one condition's, '' for a list;
+// conditions, frozen, { name, query } each. Null: not one.
+function containerParts31(prelude) {
+  const conditions = [];
+  for (const part of splitTopLevel(prelude)) {
+    const text = cssTrim(part);
+    const m = /^(--[\w\u0080-\uffff-]*|-?[A-Za-z_\u0080-\uffff][\w\u0080-\uffff-]*)(?![\w\u0080-\uffff(-])/.exec(text);
+    let name = '';
+    let rest = text;
+    if (m && m[1].toLowerCase() !== 'not') {
+      if (/^(none|and|or)$/i.test(m[1])) return null;
+      name = m[1];
+      rest = cssTrim(text.slice(m[0].length));
+    }
+    let query = '';
+    if (rest !== '') {
+      // (what it does not read as written: (x:  "a  b") stays; #348 review)
+      query = serializeMedium31(styleQueries31(rest), true);
+      if (query === 'not all') return null;
+    }
+    if (name === '' && query === '') return null;
+    conditions.push(Object.freeze({ name, query }));
+  }
+  const one = conditions.length === 1 ? conditions[0] : null;
+  return {
+    conditionText: conditions.map((c) => (c.name && c.query ? `${c.name} ${c.query}` : c.name || c.query)).join(', '),
+    containerName: one?.name ?? '',
+    containerQuery: one?.query ?? '',
+    conditions: Object.freeze(conditions),
+  };
+}
+// A container query's style() queries written as declarations,
+// style(--x: 1) (Style( lowercased); strings in it as they are (#348
+// review: style(--x: "style(--y:1)") keeps the string).
+function styleQueries31(text) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") i = stringEnd(text, i) - 1;
+    else if (
+      (c === 's' || c === 'S') &&
+      text.slice(i, i + 6).toLowerCase() === 'style(' &&
+      !/[\w\u0080-\uffff-]/.test(text[i - 1] ?? '')
+    ) {
+      const close = groupEnd(text, i + 5);
+      if (close < 0) break;
+      const inner = text.slice(i + 6, close);
+      const colon = topLevelColon(inner);
+      const name = cssTrim(colon < 0 ? inner : inner.slice(0, colon));
+      const declaration = colon < 0 ? name : `${name}: ${cssTrim(inner.slice(colon + 1))}`;
+      out += `${text.slice(from, i)}style(${declaration})`;
+      from = close + 1;
+      i = close;
+    }
+  }
+  return out + text.slice(from);
+}
+// Where a string that opens at i ends (past its quote; at a newline or the
+// end where it is left open).
+function stringEnd(text, i) {
+  const quote = text[i];
+  let k = i + 1;
+  while (k < text.length && text[k] !== quote && text[k] !== '\n') k += text[k] === '\\' ? 2 : 1;
+  return Math.min(k + 1, text.length);
+}
+// The ) that closes the ( at open (strings and escapes skipped), or -1.
+function groupEnd(text, open) {
+  let depth = 0;
+  for (let k = open; k < text.length; k++) {
+    const c = text[k];
+    if (c === '\\') k++;
+    else if (c === '"' || c === "'") k = stringEnd(text, k) - 1;
+    else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return k;
+  }
+  return -1;
+}
+// The first : outside strings and parentheses, or -1.
+function topLevelColon(text) {
+  let depth = 0;
+  for (let k = 0; k < text.length; k++) {
+    const c = text[k];
+    if (c === '\\') k++;
+    else if (c === '"' || c === "'") k = stringEnd(text, k) - 1;
+    else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === ':' && depth === 0) return k;
+  }
+  return -1;
+}
+// text split at its commas outside parentheses, strings and comments.
+function splitTopLevel(text) {
+  const parts = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === ',' && depth === 0) {
+      parts.push(text.slice(from, i));
+      from = i + 1;
+    }
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
+
 // A rule object for a parsed record, or null for rules that are dropped.
 function createRule(protos, record, sheet, parentRule) {
   if (record.selector !== undefined) {
@@ -807,7 +940,8 @@ function createRule(protos, record, sheet, parentRule) {
     // (from the text as written: only CSS whitespace trimmed, so a leading
     // U+00A0 stays, a type selector)
     let written = null;
-    if (RULES31.has(protos.CSSRule)) written = record.raw === undefined ? record.selector : stripComments(record.raw);
+    // (comments too: they separate tokens, selectors.js decomment31)
+    if (RULES31.has(protos.CSSRule)) written = record.raw ?? record.selector;
     const selectorText = written === null ? record.selector : ruleSelector31(written);
     if (selectorText === null) return null;
     const rule = makeRule(protos, 'CSSStyleRule', sheet, parentRule, {
@@ -851,22 +985,32 @@ function createRule(protos, record, sheet, parentRule) {
     });
     rule[S].supports31 = node;
   } else if (at === 'container' && body !== null) {
-    rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, containerParts(prelude));
+    const parts = MEDIA31.has(protos.MediaList) ? containerParts31(prelude) : containerParts(prelude);
+    if (parts === null) return null;
+    rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, parts);
   } else if (at === 'scope' && body !== null) {
     // [ ( <scope-start> ) ]? [ to ( <scope-end> ) ]?; jsdom 31 (black box,
     // 31.0.1) takes selectors with parentheses of their own ((:is(.a, .b)),
     // (div:has(> p))), and to( is a function, not to and a (.
-    const m = MEDIA31.has(protos.MediaList)
-      ? scopePrelude31(prelude)
-      : /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
-    if (!m) return null;
-    // (jsdom 31 trims only CSS whitespace: U+00A0 stays, #346 review)
-    const trim = MEDIA31.has(protos.MediaList) ? cssTrim : (text) => text.trim();
-    rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, {
-      prelude,
-      start: m[1] === undefined ? null : trim(m[1]),
-      end: m[2] === undefined ? null : trim(m[2]),
-    });
+    if (MEDIA31.has(protos.MediaList)) {
+      // (from the text as written: its comments separate tokens)
+      // (an at-rule whose name only starts with scope is not one: @scopeé,
+      // @scope\41; #348 review)
+      const keyword = RAW_AT.exec(record.raw);
+      if (keyword === null || keyword[1].toLowerCase() !== 'scope') return null;
+      const parts = scopePrelude31(cssTrim(record.raw.slice(keyword[0].length)));
+      if (parts === null) return null;
+      rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, parts);
+    } else {
+      const m = /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
+      if (!m) return null;
+      rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, {
+        prelude,
+        start: m[1]?.trim() ?? null,
+        end: m[2]?.trim() ?? null,
+        match: null,
+      });
+    }
   } else if (at === 'counter-style' && body !== null) {
     if (
       !/^-?[A-Za-z_][\w-]*$/.test(prelude) ||
@@ -1135,7 +1279,12 @@ function ruleText(rule) {
     case s.protos.CSSKeyframesRule: {
       // (jsdom 27.1.0 to 28: its own name property, which can be assigned)
       const name = ACEMIR_RULES.has(s.protos.CSSRule) ? String(rule.name) : s.name;
-      return `@keyframes ${keyframesName(name)} { ${keyframeRules(rule).map(ruleText).join(' ')} }`;
+      const frames = keyframeRules(rule).map(ruleText);
+      // (jsdom 31: each keyframe on a line of its own, not indented; black
+      // box, 31.0.1)
+      if (RULES31.has(s.protos.CSSRule))
+        return `@keyframes ${keyframesName(name)} {\n${frames.map((f) => `${f}\n`).join('')}}`;
+      return `@keyframes ${keyframesName(name)} { ${frames.join(' ')} }`;
     }
     case s.protos.CSSKeyframeRule:
       return `${s.keyText} ${styleText(s.style)}`;
@@ -1217,6 +1366,7 @@ function insertRule(owner, text, index, sheet, parentRule, nested) {
   const s = owner[S];
   const list = ruleArray(owner);
   const i = index === undefined ? 0 : index >>> 0;
+  if (RULES31.has(s.protos.CSSRule)) return insertRule31(owner, String(text), i, sheet, parentRule, nested);
   if (i > list.length)
     throw domError(`The index provided (${i}) is larger than the maximum index (${list.length}).`, 'IndexSizeError');
   const record = parseOneRule(String(text), s.protos);
@@ -1242,9 +1392,72 @@ function insertRule(owner, text, index, sheet, parentRule, nested) {
   return i;
 }
 
+// jsdom 31's (black box, 31.0.1): its messages; the index checked first;
+// the rule parsed with <!-- and --> as tokens; @layer statements may come
+// before @import and @namespace rules, though after them only where
+// nothing else is before (a sheet's leading ones).
+function insertRule31(owner, text, i, sheet, parentRule, nested) {
+  const s = owner[S];
+  const list = ruleArray(owner);
+  if (i > list.length)
+    throw domError(`Cannot insert a rule at index ${i} in a list of ${list.length} rules.`, 'IndexSizeError');
+  const records = parseRules(text, true, nestedBlocks(s.protos), true, false);
+  if (records.length === 0) throw domError('Cannot parse missing rule', 'SyntaxError');
+  // (the first rule read before what follows it: {} a{} is invalid)
+  const [record] = records;
+  const rule = record.invalid ? null : createRule(s.protos, record, sheet, parentRule);
+  if (!rule) {
+    // (a palette's name taken, its descriptors not)
+    const palette = record.at === 'font-palette-values' && record.prelude.startsWith('--');
+    throw domError(palette ? 'Invalid @font-palette-values' : 'Cannot parse invalid rule', 'SyntaxError');
+  }
+  if (records.length > 1) throw domError('Cannot parse more than a single rule', 'SyntaxError');
+  if (isImport(rule)) rule[S].inserted = true;
+  const before = list.slice(0, i);
+  const after = list.slice(i);
+  const prefix = (r) => isImport(r) || isNamespace(r);
+  if (nested && prefix(rule))
+    throw domError('Cannot insert this rule inside the parent grouping rule.', 'HierarchyRequestError');
+  let misplaced;
+  if (isImport(rule)) misplaced = before.some((r) => !isImport(r) && !isLayerStatement(r));
+  else if (isNamespace(rule))
+    misplaced = before.some((r) => !prefix(r) && !isLayerStatement(r)) || after.some(isImport);
+  else if (isLayerStatement(rule)) misplaced = after.some(prefix) && before.some((r) => !isLayerStatement(r));
+  else misplaced = after.some(prefix);
+  if (misplaced)
+    throw domError(
+      `Cannot insert this rule at index ${i} because it would violate the stylesheet's rule order.`,
+      'HierarchyRequestError',
+    );
+  if (isNamespace(rule) && list.some((r) => !prefix(r) && !isLayerStatement(r)))
+    throw domError(
+      'Cannot insert @namespace when rules other than @import or @namespace already exist.',
+      'InvalidStateError',
+    );
+  list.splice(i, 0, rule);
+  cssomChanges.rev++;
+  ruleListsChanged(s.protos);
+  return i;
+}
+
 function deleteRule(owner, index) {
   const list = ruleArray(owner);
   const i = index >>> 0;
+  if (RULES31.has(owner[S].protos.CSSRule)) {
+    if (i >= list.length)
+      throw domError(`Cannot delete a rule at index ${i} from a list of ${list.length} rules.`, 'IndexSizeError');
+    if (isNamespace(list[i]) && list.some((r) => !isImport(r) && !isNamespace(r) && !isLayerStatement(r)))
+      throw domError(
+        'Cannot delete @namespace when rules other than @import or @namespace already exist.',
+        'InvalidStateError',
+      );
+    const rule = list[i];
+    list.splice(i, 1);
+    cssomChanges.rev++;
+    ruleListsChanged(owner[S].protos);
+    detach(rule);
+    return;
+  }
   if (i >= list.length)
     throw domError(
       `The index provided (${i}) is larger than the maximum index (${list.length - 1}).`,
@@ -1260,12 +1473,22 @@ function deleteRule(owner, index) {
   detach(rule);
 }
 
-// A @scope prelude's [, start, end] (each undefined when left out), or
+// A jsdom 31 @scope prelude as written, read as its CSSScopeRule's data
+// (prelude, start, end, each serialized, and the texts to match by), or
 // null: ( selector ) with balanced parentheses, then to ( selector ).
 function scopePrelude31(text) {
   let i = 0;
+  // (comments too: the text as written, with them)
+  const comment = () => {
+    const close = text.indexOf('*/', i + 2);
+    i = close < 0 ? text.length : close + 2;
+  };
   const ws = () => {
-    while (i < text.length && /[ \t\n\r\f]/.test(text[i])) i++;
+    for (;;) {
+      if (i < text.length && /[ \t\n\r\f]/.test(text[i])) i++;
+      else if (text.startsWith('/*', i)) comment();
+      else return;
+    }
   };
   const group = () => {
     if (text[i] !== '(') return undefined;
@@ -1274,7 +1497,10 @@ function scopePrelude31(text) {
     for (; i < text.length; i++) {
       const c = text[i];
       if (c === '\\') i++;
-      else if (c === '"' || c === "'") {
+      else if (c === '/' && text[i + 1] === '*') {
+        comment();
+        i--;
+      } else if (c === '"' || c === "'") {
         i++;
         while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
       } else if (c === '(') depth++;
@@ -1298,16 +1524,19 @@ function scopePrelude31(text) {
     ws();
   }
   if (i !== text.length) return null;
-  // (selectors the engine knows: ((.a)) drops the rule; & is :scope)
-  for (const selector of [start, end])
-    if (selector !== undefined) {
-      try {
-        compileRuleSelector(selector.replace(/&/g, ':scope'), false, true);
-      } catch {
-        return null;
-      }
-    }
-  return [text, start, end];
+  // (selectors the engine knows, serialized: ((.a)) drops the rule, a
+  // pseudo-element too; an end may be relative, to (> p); black box,
+  // 31.0.1)
+  const from = start === undefined ? null : scopeSelector31(start, false);
+  const to = end === undefined ? null : scopeSelector31(end, true);
+  if (from === false || to === false) return null;
+  const prelude = [from === null ? '' : `(${from.text})`, to === null ? '' : `to (${to.text})`].filter(Boolean);
+  return {
+    prelude: prelude.join(' '),
+    start: from?.text ?? null,
+    end: to?.text ?? null,
+    match: { start: from?.match ?? null, end: to?.match ?? null },
+  };
 }
 
 // --- media lists ----------------------------------------------------------------------
@@ -2116,6 +2345,13 @@ export const CSSOM_INTERFACES = [
       get containerQuery() {
         return state(this).containerQuery;
       },
+      get conditions() {
+        return state(this).conditions;
+      },
+    },
+    // (conditions: jsdom 31's)
+    compat(proto, compat) {
+      if (!(compat.jsdom >= 31)) delete proto.conditions;
     },
   },
   {
@@ -2310,7 +2546,7 @@ export const CSSOM_INTERFACES = [
         // (jsdom 31: a selector it takes, serialized; comments dropped, a
         // U+00A0 kept: #269 part F3a)
         if (RULES31.has(s.protos.CSSRule)) {
-          const written = stripComments(String(v));
+          const written = String(v);
           const text = ruleSelector31(written);
           if (text !== null) {
             s.selectorText = text;

@@ -28,6 +28,7 @@
 import { sixDigits, absoluteLength } from './lengths.js';
 import { simplifyMath, mathValue } from './calc31.js';
 import { tokenizeValue } from './css-values.js';
+import { serializeString31 } from './parse31.js';
 
 const VIEWPORT = { width: 1024, height: 768 };
 
@@ -181,7 +182,45 @@ function strayCloser(text, from, to) {
   return square !== 0 || curly !== 0;
 }
 
-const collapse = (text) => cssTrim(text).replace(/[ \t\n\r\f]+/g, ' ');
+// Whitespace runs as one space outside strings; strings written as
+// jsdom 31 writes them ("a\tb" is "a\9 b"; #348 review). asWritten (a
+// container query's, serializeMedium31): the text as it is, trimmed.
+let asWritten = false;
+const WHITESPACE_RUN = /[ \t\n\r\f]+/g;
+const NEWLINE = new Set(['\n', '\r', '\f']);
+const collapse = (text) => {
+  const trimmed = cssTrim(text);
+  if (asWritten) return trimmed;
+  if (!/["'\\]/.test(trimmed)) return trimmed.replace(WHITESPACE_RUN, ' ');
+  // An escape outside a string stays as written (foo(a\"b) is no string;
+  // #348 review); in a string, a backslash before a newline is dropped.
+  let out = '';
+  let run = 0;
+  for (let i = 0; i < trimmed.length;) {
+    const c = trimmed[i];
+    if (c === '\\') {
+      out += trimmed.slice(run, i).replace(WHITESPACE_RUN, ' ') + trimmed.slice(i, i + 2);
+      i = run = i + 2;
+    } else if (c === '"' || c === "'") {
+      out += trimmed.slice(run, i).replace(WHITESPACE_RUN, ' ');
+      let value = '';
+      let from = i + 1;
+      let j = from;
+      while (j < trimmed.length && trimmed[j] !== c && !NEWLINE.has(trimmed[j])) {
+        if (trimmed[j] !== '\\') j++;
+        else if (NEWLINE.has(trimmed[j + 1])) {
+          value += decodeEscapes(trimmed.slice(from, j));
+          j += trimmed[j + 1] === '\r' && trimmed[j + 2] === '\n' ? 3 : 2;
+          from = j;
+        } else j += 2;
+      }
+      out += serializeString31(value + decodeEscapes(trimmed.slice(from, Math.min(j, trimmed.length))));
+      if (trimmed[j] === c) j++;
+      i = run = j;
+    } else i++;
+  }
+  return out + trimmed.slice(run).replace(WHITESPACE_RUN, ' ');
+};
 
 // --- the grammar -------------------------------------------------------------------------
 
@@ -550,9 +589,14 @@ function read(text) {
 }
 
 // One query as jsdom 31 writes it ("not all" when it does not parse).
-export function serializeMedium31(text) {
-  const { node } = read(String(text));
-  return node === null ? 'not all' : serialize(node);
+export function serializeMedium31(text, written = false) {
+  asWritten = written;
+  try {
+    const { node } = read(String(text));
+    return node === null ? 'not all' : serialize(node);
+  } finally {
+    asWritten = false;
+  }
 }
 
 // Whether a query matches, read as written (jsdom 31 evaluates the
