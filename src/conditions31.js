@@ -28,6 +28,7 @@
 import { sixDigits, absoluteLength } from './lengths.js';
 import { simplifyMath, mathValue } from './calc31.js';
 import { tokenizeValue } from './css-values.js';
+import { serializeString31 } from './parse31.js';
 
 const VIEWPORT = { width: 1024, height: 768 };
 
@@ -181,7 +182,25 @@ function strayCloser(text, from, to) {
   return square !== 0 || curly !== 0;
 }
 
-const collapse = (text) => cssTrim(text).replace(/[ \t\n\r\f]+/g, ' ');
+// Whitespace runs as one space outside strings; strings written as
+// jsdom 31 writes them ("a\tb" is "a\9 b"; #348 review). asWritten (a
+// container query's, serializeMedium31): the text as it is, trimmed.
+let asWritten = false;
+const collapse = (text) => {
+  const trimmed = cssTrim(text);
+  if (asWritten) return trimmed;
+  if (!trimmed.includes('"') && !trimmed.includes("'")) return trimmed.replace(/[ \t\n\r\f]+/g, ' ');
+  return trimmed
+    .split(/("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)/)
+    .map((piece, i) =>
+      i % 2 === 0
+        ? piece.replace(/[ \t\n\r\f]+/g, ' ')
+        : serializeString31(
+            decodeEscapes(piece.slice(1, piece.endsWith(piece[0]) && piece.length > 1 ? -1 : undefined)),
+          ),
+    )
+    .join('');
+};
 
 // --- the grammar -------------------------------------------------------------------------
 
@@ -550,9 +569,14 @@ function read(text) {
 }
 
 // One query as jsdom 31 writes it ("not all" when it does not parse).
-export function serializeMedium31(text) {
-  const { node } = read(String(text));
-  return node === null ? 'not all' : serialize(node);
+export function serializeMedium31(text, written = false) {
+  asWritten = written;
+  try {
+    const { node } = read(String(text));
+    return node === null ? 'not all' : serialize(node);
+  } finally {
+    asWritten = false;
+  }
 }
 
 // Whether a query matches, read as written (jsdom 31 evaluates the

@@ -9270,3 +9270,10 @@ backslash, 1x\); a scope boundary's text to match by has the items read
 only, those kept as text matching nothing anyway (@scope (:is(1x\ ,
 .a)) matches .a; serializing them for it turned the escaped space into
 an escaped comma).
+Review round 3 (#348, Copilot's summary; reproduced): a hex escape in an
+item kept as text ends with its whitespace (:is(1x\61 , b) is
+:is(1x\61, b), b still matched; two spaces make it invalid); a media
+query's whitespace is collapsed outside its strings only, a string
+written as jsdom 31 writes it ("a\tb" is "a\9 b"), and a container
+query keeps what it does not read as written ((x:  "a  b"), foo("a  b"
+c)).

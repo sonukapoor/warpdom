@@ -796,3 +796,31 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#348 review): a hex escape in an item kept as text ends with its space',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<b id=b></b>';
+    return [':is(1x\\61 , b)', ':where(1x\\61 , b)', ':is(1x\\61  , b)', ':is(1x\\000061 , b)'].map((selector) => {
+      let count;
+      try {
+        count = d.querySelectorAll(selector).length;
+      } catch (e) {
+        count = e.name;
+      }
+      const style = d.createElement('style');
+      style.textContent = `${selector} { color: red }`;
+      d.head.append(style);
+      const out = [
+        selector,
+        count,
+        style.sheet.cssRules[0]?.selectorText ?? null,
+        w.getComputedStyle(d.getElementById('b')).color,
+      ];
+      style.remove();
+      return out;
+    });
+  },
+  { jsdom: 31 },
+);

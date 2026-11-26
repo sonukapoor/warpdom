@@ -463,7 +463,14 @@ class Parser {
         end = i + 1;
         spaced = false;
         i += 2;
-        if (!WS.test(source[i - 1] ?? '')) end = i;
+        if (HEX_DIGIT.test(source[i - 1] ?? '')) {
+          // (a hex escape with its digits, the whitespace that ends it
+          // trimmed with no other; #348 review: :is(1x\61 , b))
+          while (i < to && i - end < 6 && HEX_DIGIT.test(source[i])) i++;
+          end = i;
+          if (source[i] === '\r' && source[i + 1] === '\n') i += 2;
+          else if (i < to && WS.test(source[i])) i++;
+        } else if (!WS.test(source[i - 1] ?? '')) end = i;
       } else if (c === '"' || c === "'") {
         i++;
         while (i < to && source[i] !== c && source[i] !== '\n') i += source[i] === '\\' ? 2 : 1;

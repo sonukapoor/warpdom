@@ -189,3 +189,17 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#348 review): a container query keeps what it does not read as written; a media query keeps its strings',
+  (w) => {
+    const d = w.document;
+    return ['(x: "a  b")', 'foo("a  b"  c)', '(x:  "a\tb")', 'style(--x:  "a  b"   c)', 'style(--x: "a  b")'].map(
+      (q) => [
+        sheetOf(d, `@media ${q} {}`).cssRules[0]?.media.mediaText ?? null,
+        sheetOf(d, `@container ${q} {}`).cssRules[0]?.conditionText ?? null,
+      ],
+    );
+  },
+  { jsdom: 31 },
+);

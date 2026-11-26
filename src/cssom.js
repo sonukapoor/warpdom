@@ -829,7 +829,8 @@ function containerParts31(prelude) {
     }
     let query = '';
     if (rest !== '') {
-      query = serializeMedium31(styleQueries31(rest));
+      // (what it does not read as written: (x:  "a  b") stays; #348 review)
+      query = serializeMedium31(styleQueries31(rest), true);
       if (query === 'not all') return null;
     }
     if (name === '' && query === '') return null;
