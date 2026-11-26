@@ -153,3 +153,23 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31's style accessors: cssFloat on CSSStyleDeclaration, no accessor for names it does not know",
+  (w) => {
+    const own = (proto, key) => Object.getOwnPropertyDescriptor(proto, key) !== undefined;
+    const style = w.document.createElement('div').style;
+    style.cssFloat = 'left';
+    return [
+      own(w.CSSStyleDeclaration.prototype, 'cssFloat'),
+      own(w.CSSStyleProperties.prototype, 'cssFloat'),
+      style.cssText,
+      style.cssFloat,
+      ...['voiceFamily', 'voice-family', 'cue', 'strokeColor', 'navUp', 'pause', 'color', 'float'].map(
+        (k) => k in style,
+      ),
+      Object.getOwnPropertyNames(w.CSSStyleProperties.prototype).length,
+    ];
+  },
+  { jsdom: 31 },
+);

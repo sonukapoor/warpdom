@@ -9234,3 +9234,23 @@ fix of its own.
   list; conditions (jsdom 31's member) a frozen array of frozen { name,
   query }, the same each read. Container rules never apply in jsdom 31,
   nor in warpdom.
+- Style accessors: jsdom 31's cssFloat is CSSStyleDeclaration's (on
+  CSSStyleProperties before), and its CSSStyleProperties has no accessor
+  for 50 names its property list does not have (voice-family, cue, pause,
+  rest, stroke-color, nav-up, ...; NO_ACCESSOR31, which neither parses).
+Decided (2026-11-26), not in F3b:
+- Prototype key order. jsdom 31's CSSOM interfaces list constructor
+  first, then methods, accessors (each sorted), a stringifier and
+  constants by value; but every jsdom generation puts constructor first
+  (217 of jsdom 30's 219 interfaces; warpdom's order differs on 197 of
+  them, constructor last, members in IDL order). It is one question for
+  the whole library, not a jsdom 31 detail, and no corpus suite has
+  shown it; left for a decision of its own (and CSSPropertyRule's order
+  with it).
+- @page's CSS 2 properties (jsdom 31: color, font, border, background,
+  padding, width, ... in an @page block and as CSSPageDescriptors
+  accessors, 126 keys; border expanded as in a style rule). The page
+  block would need the 31 style surface for those names (validation,
+  expansion, serialization order), and tests hardly use @page; recorded,
+  not modeled.
+F3b then: Next F3c (the values), then NEWEST_MODELED_JSDOM to 31.
