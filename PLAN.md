@@ -9152,3 +9152,137 @@ without its mark (1000 such selectors, 1000 others, the rule, 1000 more:
 the rule dropped again); clearing the marks now clears the text cache.
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.
+
+## 2026-11-26: jsdom 31, CSS part F3b: the CSSOM details (branch feat/269-jsdom31-cssom-details, #269)
+
+First, the selector follow-ups left from #346 (all already on main, none
+from it; black box, 31.0.1):
+- A comment separates tokens (jsdom 31 reads a selector as CSS tokens):
+  p /**/ b is p b, :/**/is(p) is :is(p), p/**/>b is p > b, but p/**/b,
+  .a/**/p, #/**/a, -/**/a and 2/**/n are two tokens with nothing between,
+  no selector. Queries took no comment at all (they threw), and rules
+  dropped them (p/**/b was pb). decomment31: in a 31 parse, comments are
+  dropped, or where dropping one would join two tokens (after a name or
+  #, before a name, an escape or a parenthesis) replaced by a NUL, which
+  no selector has (preprocessing makes NUL U+FFFD); the parser keeps a map
+  to the text as written. Rule selectors are now read with their comments.
+- :is() and :where() keep the items jsdom 31 cannot read, as written
+  (:is(1x, b), :is(p/**/:bogus, b), :is(1x, , b), :is(::before, b)),
+  with whitespace and comments at their end trimmed; whitespace before a
+  comma after such an item makes the whole list invalid (:is(1x , b),
+  :is(1x /**/, b); not :is(1x/**/, b) or :is(b , 1x)), which a list around
+  it then keeps as an item (:is(:where(1x , b))). order31 on the parsed
+  list: its items in order, those it cannot read as text; they match
+  nothing.
+- @scope's start and end are serialized as jsdom 31's engine writes
+  selectors (a > b, :is(P), [a="b" i], a, b, c, :heading(1) for 01; the
+  prelude in cssText too), from the prelude as written (a/*x*/b drops the
+  rule, a /*x*/ b is a b); pseudo-elements drop it, in either; an end may
+  be relative (to (> p), to (~ span)): the cascade matches it with :scope
+  before its combinator (scopeSelector31's match, which writes every digit
+  of a :heading() level, so that it reads back).
+Load 33.6 to 33.8 ms, cold sheets 152.3 to 154.7 ms, getComputedStyle
+69.25 to 69.9 ms (31) and 61.9 to 61.55 ms (30): noise (5 to 8
+interleaved runs, medians, node 22.17.1); the new work is on a parse.
+Not here: CSS Nesting (the deviation listed above; a nested rule's
+:heading() written with an exponent follows from it).
+Then (black box, 31.0.1):
+- querySelector, querySelectorAll, matches, closest and
+  webkitMatchesSelector throw SyntaxError "Invalid selector" for every
+  invalid selector (invalid(): the message while grammar31 is set).
+- insertRule and deleteRule have jsdom 31's messages: "Cannot parse
+  missing rule" (nothing but whitespace and comments), "Cannot parse
+  invalid rule" ({}, ;, a selector it refuses, @charset, a bad palette
+  name), "Invalid @font-palette-values" (a --name with descriptors it
+  refuses), "Cannot parse more than a single rule" (the first rule is read
+  first: {} a{} is invalid, a{} {} more than one), "Cannot insert a rule at
+  index N in a list of M rules." (checked before parsing), "Cannot insert
+  this rule inside the parent grouping rule.", "Cannot insert this rule at
+  index N because it would violate the stylesheet's rule order.", "Cannot
+  insert @namespace when rules other than @import or @namespace already
+  exist.", "Cannot delete a rule at index N from a list of M rules.",
+  "Cannot delete @namespace when ...". Parse a rule reads <!-- and --> as
+  tokens (<!-- a{} is invalid, a{} --> more than one; parseRules' cdo).
+- @layer statements in a sheet's prefix: leading ones are kept before
+  @import and @namespace rules (@layer a; @import url(x); @namespace ...),
+  and one after them ends the prefix (@import url(x); @layer a; @import
+  url(y) drops the second). insertRule: an @import may follow @layer
+  statements, a @namespace too, and a @layer statement may go before
+  them only where nothing else is before it; the @namespace checks leave
+  @layer statements out. warpdom dropped every @import after a @layer
+  statement.
+Found for 1.x, not modeled (jsdom 20 to 30): @layer a; @import url(x)
+keeps the @import in every version (20 to 26 drop the @layer statement,
+27 to 30 keep both, and also keep an @import or @namespace after a
+@layer statement that follows one: @import; @layer a; @import has three
+rules), while warpdom's profiles drop the @import; 20 to 25 drop
+@namespace url(x); @layer a; ... down to the style rule, 26 keeps a
+@layer block. A @layer list before @import is common (Tailwind 4 writes
+@layer theme, base, components, utilities; first), so this is worth a 1.x
+fix of its own.
+- @keyframes cssText: each keyframe on a line of its own, not indented
+  (@keyframes k {\n0% { color: red; }\n}; an empty one {\n}), inside a
+  grouping rule too (only its first line takes the indent).
+- @container: a comma-separated list of conditions, each [ name ]
+  [ query ]; the query written as jsdom 31 writes media queries
+  (conditions31.js serializeMedium31: (width > 1px), (aspect-ratio > 1 /
+  2), units and features in lowercase, unknown ones such as (w>1px) and
+  (bogus) as written), a style() query as a declaration (style(--x: 1),
+  Style( lowercased), a name as written (--c too; none, and, or drop the
+  rule, as does a query it cannot read, (a) and (b) or (c)).
+  containerName and containerQuery are the one condition's, '' for a
+  list; conditions (jsdom 31's member) a frozen array of frozen { name,
+  query }, the same each read. Container rules never apply in jsdom 31,
+  nor in warpdom.
+- Style accessors: jsdom 31's cssFloat is CSSStyleDeclaration's (on
+  CSSStyleProperties before), and its CSSStyleProperties has no accessor
+  for 50 names its property list does not have (voice-family, cue, pause,
+  rest, stroke-color, nav-up, ...; NO_ACCESSOR31, which neither parses).
+Decided (2026-11-26), not in F3b:
+- Prototype key order. jsdom 31's CSSOM interfaces list constructor
+  first, then methods, accessors (each sorted), a stringifier and
+  constants by value; but every jsdom generation puts constructor first
+  (217 of jsdom 30's 219 interfaces; warpdom's order differs on 197 of
+  them, constructor last, members in IDL order). It is one question for
+  the whole library, not a jsdom 31 detail, and no corpus suite has
+  shown it; left for a decision of its own (and CSSPropertyRule's order
+  with it).
+- @page's CSS 2 properties (jsdom 31: color, font, border, background,
+  padding, width, ... in an @page block and as CSSPageDescriptors
+  accessors, 126 keys; border expanded as in a style rule). The page
+  block would need the 31 style surface for those names (validation,
+  expansion, serialization order), and tests hardly use @page; recorded,
+  not modeled.
+F3b then: Next F3c (the values), then NEWEST_MODELED_JSDOM to 31.
+Review round 1 (#348, all reproduced on 31.0.1): a hex escape is read
+with the whitespace that ends it (.\61 /**/b is two names, no selector);
+a trailing comment opens at the first /* after the comment before it (a
+comment may hold /*: :is(1x/*a/*b*/, b) is :is(1x, b)); a forgiving list
+with an item kept as text marks its serialization lossy, so the rule is
+matched by its text as written (:is(1x\ , b) still matches b); an
+at-rule whose name only starts with scope (@scopeé, @scope\41) is an
+unknown rule, not a TypeError; a style() query is normalized outside
+strings only (style(--x: "style(--y:1)") keeps the string).
+Review round 2 (#348, reproduced): an item kept as text is read forward
+as tokens to find where its text ends (a string may hold /* or */:
+:is(1x"/*"/*tail*/, b) keeps 1x"/*"; an escaped space keeps its
+backslash, 1x\); a scope boundary's text to match by has the items read
+only, those kept as text matching nothing anyway (@scope (:is(1x\ ,
+.a)) matches .a; serializing them for it turned the escaped space into
+an escaped comma).
+Review round 3 (#348, Copilot's summary; reproduced): a hex escape in an
+item kept as text ends with its whitespace (:is(1x\61 , b) is
+:is(1x\61, b), b still matched; two spaces make it invalid); a media
+query's whitespace is collapsed outside its strings only, a string
+written as jsdom 31 writes it ("a\tb" is "a\9 b"), and a container
+query keeps what it does not read as written ((x:  "a  b"), foo("a  b"
+c)).
+
+Review round 4 (#348, reproduced on 31.0.1): an escape outside a string
+is kept as written in a media query (foo(a\"b) stayed foo(a\"b")), and a
+string drops a backslash before a newline (LF, CR LF, CR, FF; "\41\<LF>B"
+is "AB"). A sheet is split into rules with an escape as one token, in
+every profile: a\"b{} c{} was read as a string to the end of the sheet,
+so no rule was kept (main, all versions). Black box 20 to 31 on nine
+sheets: 75 differences before, 55 after (31: 4 to 0; 27 to 30 fewer;
+20 to 26 unchanged, where jsdom's sheet is null for these texts).

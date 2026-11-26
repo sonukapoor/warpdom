@@ -289,7 +289,8 @@ const DOCUMENT_ELEMENT = {};
 // elements are in it too).
 // spec31: jsdom 31's selector grammar.
 function scopeOf(rule, ss, outer, root, spec31) {
-  const { start, end } = rule[S];
+  // (jsdom 31: the texts to match by, cssom.js scopeSelector31)
+  const { start, end } = rule[S].match ?? rule[S];
   try {
     const owner = ss.ownerNode?.[S].parent ?? null;
     // (a constructed sheet: the root element when the document adopts it,

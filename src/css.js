@@ -6207,11 +6207,27 @@ function setBox(style, s, name, raw, priority, via) {
 // descriptor map has no prototype: V8 keeps it as a dictionary instead of
 // building a hidden class per key.
 // surfaceKey: the profile's (styleSurface), or null (jsdom 30.1 and later).
+// Properties jsdom 31's CSSStyleProperties has no accessor for (black box,
+// 31.0.1: names its property list does not have, which it does not parse
+// either); and its cssFloat is CSSStyleDeclaration's.
+const NO_ACCESSOR31 = new Set(
+  (
+    'animation-range-center background-tbd block-step bookmark-label copy-into cue cue-after cue-before ' +
+    'event-trigger event-trigger-name event-trigger-source fill-break fill-color fill-image fill-origin ' +
+    'fill-position fill-repeat fill-size flow-into flow-tolerance nav-down nav-left nav-right nav-up ' +
+    'path-length pause pointer-timeline pointer-timeline-axis pointer-timeline-name rest shape-inside ' +
+    'string-set stroke-align stroke-alignment stroke-break stroke-color stroke-dash-corner ' +
+    'stroke-dash-justify stroke-dashadjust stroke-dashcorner stroke-image stroke-origin stroke-position ' +
+    'stroke-repeat stroke-size voice-family voice-pitch voice-range voice-rate voice-volume'
+  ).split(' '),
+);
 function styleDescriptors(surfaceKey = null) {
   const descriptors = Object.create(null);
   const surface = surfaceKey === null ? null : styleSurface(surfaceKey);
+  const spec31 = surface?.cssom31 === true;
   for (const accessor of STYLE_ACCESSORS) {
     const name = cssName(accessor);
+    if (spec31 && (accessor === 'cssFloat' || NO_ACCESSOR31.has(name))) continue;
     const via = accessor === 'cssFloat' ? 'cssFloat' : 'accessor';
     if (surface === null) descriptors[accessor] = styleAccessor(name, via);
     else if (!missing(surface, accessor, name))
@@ -6513,6 +6529,11 @@ export const CSS_INTERFACES = [
   {
     name: 'CSSStyleDeclaration',
     slot: [S, STYLE_SLOT.descriptor],
+    // (cssFloat: jsdom 31's, here; before, CSSStyleProperties' or, before
+    // jsdom 29, this interface's accessors)
+    compat(proto, compat) {
+      if (compat.jsdom >= 31) Object.defineProperty(proto, 'cssFloat', styleAccessor('float', 'cssFloat'));
+    },
     members: {
       get cssText() {
         const s = styleState(this);

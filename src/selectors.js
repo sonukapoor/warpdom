@@ -22,6 +22,7 @@ import { serializeName31, serializeString31 } from './parse31.js';
 // --- tokens and parsing --------------------------------------------------------
 
 const WS = /[ \t\n\r\f]/;
+const HEX_DIGIT = /[0-9a-fA-F]/;
 // (by code unit: a letter, _, or anything from U+0080; a name also takes
 // digits and -; '' past the end is neither)
 const isNameStart = (c) => {
@@ -33,8 +34,63 @@ const isName = (c) => {
   return isNameStart(c) || (k >= 48 && k <= 57) || k === 45;
 };
 
+// jsdom 31 reads a selector as CSS tokens, where a comment separates
+// tokens and is then gone (black box, 31.0.1): p /**/ b is p b, :/**/is(p)
+// is :is(p), but p/**/b two names with nothing between, no selector. The
+// text with its comments dropped, or where dropping one would join two
+// tokens (after a name or #, before a name, an escape or a parenthesis), a
+// NUL, which no selector has (preprocessing makes NUL U+FFFD) and the
+// parser refuses. parser.map: where each character came from.
+function decomment31(source, parser) {
+  let out = '';
+  const map = [];
+  let named = false; // (the last character copied ends a name or a #)
+  for (let i = 0; i < source.length;) {
+    const c = source[i];
+    if (c === '/' && source[i + 1] === '*') {
+      const at = i;
+      while (source[i] === '/' && source[i + 1] === '*') {
+        const close = source.indexOf('*/', i + 2);
+        i = close < 0 ? source.length : close + 2;
+      }
+      const next = source[i] ?? '';
+      if (named && (isName(next) || next === '\\' || next === '(')) {
+        out += '\0';
+        map.push(at);
+      }
+      named = false;
+      continue;
+    }
+    let to = i + 1;
+    if (c === '\\') {
+      // (a hex escape with the whitespace that ends it: .\61 /**/b is two
+      // names, #348 review)
+      to = Math.min(i + 2, source.length);
+      if (HEX_DIGIT.test(source[i + 1] ?? '')) {
+        to = i + 1;
+        while (to < source.length && to - i <= 6 && HEX_DIGIT.test(source[to])) to++;
+        if (source[to] === '\r' && source[to + 1] === '\n') to += 2;
+        else if (to < source.length && WS.test(source[to])) to++;
+      }
+    } else if (c === '"' || c === "'") {
+      while (to < source.length && source[to] !== c && source[to] !== '\n') to += source[to] === '\\' ? 2 : 1;
+      to = Math.min(to + 1, source.length);
+    }
+    for (let k = i; k < to; k++) map.push(k);
+    out += source.slice(i, to);
+    named = c === '\\' || isName(source[to - 1]) || c === '#';
+    if (c === '"' || c === "'") named = false;
+    i = to;
+  }
+  map.push(source.length);
+  parser.map = map;
+  return out;
+}
+
+// (jsdom 31's engine says only Invalid selector, whatever the selector;
+// black box, 31.0.1)
 function invalid(selector) {
-  return domError(`'${selector}' is not a valid selector.`, 'SyntaxError');
+  return domError(grammar31 ? 'Invalid selector' : `'${selector}' is not a valid selector.`, 'SyntaxError');
 }
 
 // jsdom 31's cascade (compileRuleSelector's scoping, black box, 31.0.1;
@@ -56,9 +112,19 @@ let unforgiving31 = false;
 
 class Parser {
   constructor(text) {
-    this.text = preprocess(text);
+    const source = preprocess(text);
+    // (jsdom 31: comments separate tokens, decomment31; map: where each
+    // character of text is in source, null where they are the same)
+    this.source = source;
+    this.map = null;
+    this.text = grammar31 && source.includes('/*') ? decomment31(source, this) : source;
     this.i = 0;
     this.depth = 0; // selector lists open: 1 at the top level
+  }
+
+  // Where position i of text is in source.
+  origin(i) {
+    return this.map === null ? i : this.map[i];
   }
 
   peek(offset = 0) {
@@ -66,7 +132,7 @@ class Parser {
   }
 
   fail() {
-    throw invalid(this.text);
+    throw invalid(this.source);
   }
 
   skipWs() {
@@ -338,6 +404,10 @@ class Parser {
       return items;
     }
     const items = [];
+    // (jsdom 31 writes the items it cannot read as they are, empty ones
+    // too: :is(1x, , b); black box, 31.0.1. order31: all of them, in order,
+    // those it cannot read as text)
+    const order = grammar31 ? [] : null;
     this.depth++;
     try {
       for (;;) {
@@ -348,9 +418,14 @@ class Parser {
           this.skipWs();
           if (this.peek() !== ',' && this.peek() !== ')') this.fail();
           items.push(item);
+          order?.push(item);
         } catch {
           this.i = start;
           this.skipItem();
+          if (order !== null) {
+            order.push(this.itemText31(start));
+            items.order31 = order;
+          }
         }
         if (this.peek() !== ',') return items;
         this.i++;
@@ -358,6 +433,58 @@ class Parser {
     } finally {
       this.depth--;
     }
+  }
+
+  // An item of a forgiving list jsdom 31 cannot read, from start to here,
+  // as written: whitespace and comments at its end trimmed, though
+  // whitespace before a comma makes the whole list invalid (:is(1x , b);
+  // an escaped space is trimmed and kept the item; black box, 31.0.1).
+  itemText31(start) {
+    const { source } = this;
+    const from = this.origin(start);
+    const to = this.origin(this.i);
+    // (read forward, as tokens: strings and escapes are the item's, a
+    // comment runs to its first */ and may hold /* or quotes; what follows
+    // the last of the item's own text is trimmed, its unescaped
+    // whitespace noted; #348 review)
+    let end = from;
+    let spaced = false;
+    for (let i = from; i < to;) {
+      const c = source[i];
+      if (c === '/' && source[i + 1] === '*') {
+        const close = source.indexOf('*/', i + 2);
+        i = close < 0 || close + 2 > to ? to : close + 2;
+      } else if (WS.test(c)) {
+        spaced = true;
+        i++;
+      } else if (c === '\\') {
+        // (an escaped space: the backslash kept, the space trimmed, as
+        // jsdom 31 does: :is(1x\ , b) is :is(1x\, b))
+        end = i + 1;
+        spaced = false;
+        i += 2;
+        if (HEX_DIGIT.test(source[i - 1] ?? '')) {
+          // (a hex escape with its digits, the whitespace that ends it
+          // trimmed with no other; #348 review: :is(1x\61 , b))
+          while (i < to && i - end < 6 && HEX_DIGIT.test(source[i])) i++;
+          end = i;
+          if (source[i] === '\r' && source[i + 1] === '\n') i += 2;
+          else if (i < to && WS.test(source[i])) i++;
+        } else if (!WS.test(source[i - 1] ?? '')) end = i;
+      } else if (c === '"' || c === "'") {
+        i++;
+        while (i < to && source[i] !== c && source[i] !== '\n') i += source[i] === '\\' ? 2 : 1;
+        i = Math.min(i + 1, to);
+        end = i;
+        spaced = false;
+      } else {
+        i++;
+        end = i;
+        spaced = false;
+      }
+    }
+    if (spaced && this.peek() === ',') this.fail();
+    return source.slice(from, end);
   }
 
   // Skips to the next top-level comma or the closing parenthesis.
@@ -1505,6 +1632,42 @@ export function ruleSelector31(selector) {
   return text;
 }
 
+// An @scope rule's start or end in jsdom 31 (black box, 31.0.1): a
+// selector list without pseudo-elements, an end's relative (to (> p)),
+// written as its engine serializes it (text), and the text the cascade
+// matches by (match: :scope before a relative selector's combinator,
+// every digit of a :heading() level); false where it takes none.
+const scopeCache31 = new Map();
+export function scopeSelector31(selector, relative) {
+  const key = `${relative ? 1 : 0}${selector}`;
+  let entry = scopeCache31.get(key);
+  if (entry === undefined) {
+    grammar31 = true;
+    try {
+      const parser = new Parser(selector);
+      const list = parser.list(relative);
+      if (parser.i < parser.text.length || list.some((c) => c.parts.some((part) => part.element !== null)))
+        entry = false;
+      else {
+        const text = serializeList31(list);
+        exact31 = true;
+        const match = list
+          .map((c) => (c.relative && c.combinators[0] !== ' ' ? `:scope ${serializeComplex(c)}` : serializeComplex(c)))
+          .join(', ');
+        entry = { text, match };
+      }
+    } catch {
+      entry = false;
+    } finally {
+      grammar31 = false;
+      exact31 = false;
+    }
+    if (scopeCache31.size >= CACHE_LIMIT) scopeCache31.clear();
+    scopeCache31.set(key, entry);
+  }
+  return entry;
+}
+
 // Whether jsdom 31's selector() takes a selector (black box, 31.0.1):
 // valid as its cascade reads a shadow tree's rules (:host-context() too),
 // with :is() and :where() unforgiving: an invalid or empty list, or a
@@ -1755,6 +1918,17 @@ function pseudoArgument({ name, arg }) {
     case 'dir':
     case 'state':
       return `(${serializeName31(arg)})`;
+    case 'is':
+    case 'where':
+      // (items kept as text need not read back as the list did, :is(1x\ , b)
+      // as :is(1x\, b): the rule is matched by its text as written)
+      if (arg.order31 !== undefined) lossy31 = true;
+      // (the text to match by, exact31: the items read only, as the items
+      // kept as text match nothing: @scope (:is(1x\ , .a)) matches .a;
+      // #348 review)
+      if (arg.order31 !== undefined && !exact31)
+        return `(${arg.order31.map((item) => (typeof item === 'string' ? item : serializeComplex(item))).join(', ')})`;
+      return `(${serializeList31(arg)})`;
     default:
       return `(${serializeList31(arg)})`;
   }
@@ -1763,11 +1937,14 @@ function pseudoArgument({ name, arg }) {
 // (an exponent, 1.23457e+23, is no level when read back: the rule's
 // selector is then compiled from its text as written, lossyTexts31)
 function level31(n) {
+  // (exact31: every digit, a text to match by that reads back)
+  if (exact31) return BigInt(n).toString();
   const text = String(Number(n.toPrecision(6)));
   if (text.includes('e')) lossy31 = true;
   return text;
 }
 let lossy31 = false;
+let exact31 = false;
 // Selectors ruleSelector31 wrote that do not read back as they were.
 const lossyTexts31 = new Set();
 // The text a rule's selector is matched by in jsdom 31 (cascade.js
