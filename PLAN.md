@@ -9392,3 +9392,10 @@ changed: the per-read callback in absolutize31 (CodeRabbit nitpick):
 the benches show no cost (round 2), and a module-level one would need
 its state saved around absoluteLength, which re-enters for the parent's
 font size. Sweep: 58 of 4410, as before.
+
+Review round 5 (#349, Copilot's summary; reproduced on 31.0.1): a
+font-size of percentages only in math resolves too (calc(50%) is 5px
+with a 10px parent); font-size math is now read in absoluteFontSize,
+one loop with no callbacks (CodeRabbit nitpick). Left for later: jsdom
+31 declares round(55%, 1%) as written, this as calc(55%) (the computed
+5.5px is the same).

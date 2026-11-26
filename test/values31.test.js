@@ -91,6 +91,10 @@ const DECLARATIONS = [
   'font-size: round(1rem, 1px)',
   'font-size: calc(2 * 1em)',
   'font-size: 150%',
+  'font-size: calc(50%)',
+  'font-size: calc(10% + 20%)',
+  'font-size: min(50%, 200%)',
+  'font-size: calc(50% * 2)',
 ];
 
 parity(
