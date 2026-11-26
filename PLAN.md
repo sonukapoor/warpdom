@@ -9220,3 +9220,17 @@ rules), while warpdom's profiles drop the @import; 20 to 25 drop
 @layer block. A @layer list before @import is common (Tailwind 4 writes
 @layer theme, base, components, utilities; first), so this is worth a 1.x
 fix of its own.
+- @keyframes cssText: each keyframe on a line of its own, not indented
+  (@keyframes k {\n0% { color: red; }\n}; an empty one {\n}), inside a
+  grouping rule too (only its first line takes the indent).
+- @container: a comma-separated list of conditions, each [ name ]
+  [ query ]; the query written as jsdom 31 writes media queries
+  (conditions31.js serializeMedium31: (width > 1px), (aspect-ratio > 1 /
+  2), units and features in lowercase, unknown ones such as (w>1px) and
+  (bogus) as written), a style() query as a declaration (style(--x: 1),
+  Style( lowercased), a name as written (--c too; none, and, or drop the
+  rule, as does a query it cannot read, (a) and (b) or (c)).
+  containerName and containerQuery are the one condition's, '' for a
+  list; conditions (jsdom 31's member) a frozen array of frozen { name,
+  query }, the same each read. Container rules never apply in jsdom 31,
+  nor in warpdom.

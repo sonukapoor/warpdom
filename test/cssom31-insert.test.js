@@ -97,3 +97,59 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31's @keyframes cssText: each keyframe on a line of its own",
+  (w) => {
+    const d = w.document;
+    const sheet = sheetOf(
+      d,
+      '@keyframes k { 0% { color: red } to { color: blue; left: 1px } } @keyframes e {} @keyframes f { 50% {} } @media all { @keyframes m { 0% { color: red } } }',
+    );
+    const [k, e] = sheet.cssRules;
+    e.appendRule('from { top: 0 }');
+    return [...sheet.cssRules].map((r) => r.cssText).concat(k.cssRules[1].cssText);
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31's @container: conditions serialized as its media queries, conditions, names",
+  (w) => {
+    const d = w.document;
+    const preludes = [
+      '(width>1px)',
+      'card (min-width:400px)',
+      'a (w>1px), b (h>1px)',
+      'a, b (h>1px)',
+      'style(--x:1)',
+      'Style(--x:1)',
+      'card style(--x: 1)',
+      'not (width<10px)',
+      '(10px<width<=20px)',
+      '(bogus)',
+      'card',
+      'none (width>1px)',
+      'and (width>1px)',
+      '(WIDTH > 1PX)',
+      'Card (width>1px)',
+      '(width>calc(1px+2px))',
+      '(orientation:portrait) and (width>1px) or (height>1px)',
+      '(width: 1px) , (height: 2px)',
+      '(aspect-ratio > 1/2)',
+      '--c (width > 1px)',
+    ];
+    const out = preludes.map((prelude) => {
+      const rule = sheetOf(d, `@container ${prelude} { p { color: red } }`).cssRules[0];
+      return rule ? [rule.cssText, rule.containerName, rule.containerQuery, JSON.stringify(rule.conditions)] : null;
+    });
+    const rule = sheetOf(d, '@container a (width > 1px) {}').cssRules[0];
+    out.push([
+      rule.conditions === rule.conditions,
+      Object.isFrozen(rule.conditions),
+      Object.isFrozen(rule.conditions[0]),
+    ]);
+    return out;
+  },
+  { jsdom: 31 },
+);

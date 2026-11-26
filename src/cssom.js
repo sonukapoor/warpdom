@@ -809,6 +809,67 @@ function containerParts(prelude) {
   return { conditionText: prelude, containerName: named ? m[1] : '', containerQuery: named ? m[2] : prelude };
 }
 
+// jsdom 31's (black box, 31.0.1): a comma-separated list of conditions,
+// each [ <container-name> ] [ <query> ], a query written as its media
+// queries are (conditions31.js: (width > 1px), (w>1px) kept), a name as
+// written (none, and, or drop the rule; not and style() start a query);
+// containerName and containerQuery the one condition's, '' for a list;
+// conditions, frozen, { name, query } each. Null: not one.
+function containerParts31(prelude) {
+  const conditions = [];
+  for (const part of splitTopLevel(prelude)) {
+    const text = cssTrim(part);
+    const m = /^(--[\w\u0080-\uffff-]*|-?[A-Za-z_\u0080-\uffff][\w\u0080-\uffff-]*)(?![\w\u0080-\uffff(-])/.exec(text);
+    let name = '';
+    let rest = text;
+    if (m && m[1].toLowerCase() !== 'not') {
+      if (/^(none|and|or)$/i.test(m[1])) return null;
+      name = m[1];
+      rest = cssTrim(text.slice(m[0].length));
+    }
+    let query = '';
+    if (rest !== '') {
+      // (a style() query written as a declaration: style(--x: 1))
+      query = serializeMedium31(
+        rest.replace(/\bstyle\(\s*(--[^:\s()]+)\s*(?::\s*([^()]*?))?\s*\)/gi, (_, n, v) =>
+          v === undefined ? `style(${n})` : `style(${n}: ${v})`,
+        ),
+      );
+      if (query === 'not all') return null;
+    }
+    if (name === '' && query === '') return null;
+    conditions.push(Object.freeze({ name, query }));
+  }
+  const one = conditions.length === 1 ? conditions[0] : null;
+  return {
+    conditionText: conditions.map((c) => (c.name && c.query ? `${c.name} ${c.query}` : c.name || c.query)).join(', '),
+    containerName: one?.name ?? '',
+    containerQuery: one?.query ?? '',
+    conditions: Object.freeze(conditions),
+  };
+}
+// text split at its commas outside parentheses, strings and comments.
+function splitTopLevel(text) {
+  const parts = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === ',' && depth === 0) {
+      parts.push(text.slice(from, i));
+      from = i + 1;
+    }
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
+
 // A rule object for a parsed record, or null for rules that are dropped.
 function createRule(protos, record, sheet, parentRule) {
   if (record.selector !== undefined) {
@@ -865,7 +926,9 @@ function createRule(protos, record, sheet, parentRule) {
     });
     rule[S].supports31 = node;
   } else if (at === 'container' && body !== null) {
-    rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, containerParts(prelude));
+    const parts = MEDIA31.has(protos.MediaList) ? containerParts31(prelude) : containerParts(prelude);
+    if (parts === null) return null;
+    rule = makeRule(protos, 'CSSContainerRule', sheet, parentRule, parts);
   } else if (at === 'scope' && body !== null) {
     // [ ( <scope-start> ) ]? [ to ( <scope-end> ) ]?; jsdom 31 (black box,
     // 31.0.1) takes selectors with parentheses of their own ((:is(.a, .b)),
@@ -1153,7 +1216,12 @@ function ruleText(rule) {
     case s.protos.CSSKeyframesRule: {
       // (jsdom 27.1.0 to 28: its own name property, which can be assigned)
       const name = ACEMIR_RULES.has(s.protos.CSSRule) ? String(rule.name) : s.name;
-      return `@keyframes ${keyframesName(name)} { ${keyframeRules(rule).map(ruleText).join(' ')} }`;
+      const frames = keyframeRules(rule).map(ruleText);
+      // (jsdom 31: each keyframe on a line of its own, not indented; black
+      // box, 31.0.1)
+      if (RULES31.has(s.protos.CSSRule))
+        return `@keyframes ${keyframesName(name)} {\n${frames.map((f) => `${f}\n`).join('')}}`;
+      return `@keyframes ${keyframesName(name)} { ${frames.join(' ')} }`;
     }
     case s.protos.CSSKeyframeRule:
       return `${s.keyText} ${styleText(s.style)}`;
@@ -2214,6 +2282,13 @@ export const CSSOM_INTERFACES = [
       get containerQuery() {
         return state(this).containerQuery;
       },
+      get conditions() {
+        return state(this).conditions;
+      },
+    },
+    // (conditions: jsdom 31's)
+    compat(proto, compat) {
+      if (!(compat.jsdom >= 31)) delete proto.conditions;
     },
   },
   {
