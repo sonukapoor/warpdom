@@ -442,22 +442,39 @@ class Parser {
   itemText31(start) {
     const { source } = this;
     const from = this.origin(start);
-    let end = this.origin(this.i);
+    const to = this.origin(this.i);
+    // (read forward, as tokens: strings and escapes are the item's, a
+    // comment runs to its first */ and may hold /* or quotes; what follows
+    // the last of the item's own text is trimmed, its unescaped
+    // whitespace noted; #348 review)
+    let end = from;
     let spaced = false;
-    for (;;) {
-      if (end > from && WS.test(source[end - 1])) {
-        let k = end - 1;
-        while (k > from && source[k - 1] === '\\') k--;
-        if ((end - 1 - k) % 2 === 0) spaced = true;
-        end--;
-      } else if (end - from >= 4 && source.endsWith('*/', end)) {
-        // (the comment this */ ends opens at the first /* after the
-        // comment before it: a comment holds /*, #348 review)
-        const before = source.lastIndexOf('*/', end - 3);
-        const open = source.indexOf('/*', Math.max(from, before + 2));
-        if (open < from || open > end - 4) break;
-        end = open;
-      } else break;
+    for (let i = from; i < to;) {
+      const c = source[i];
+      if (c === '/' && source[i + 1] === '*') {
+        const close = source.indexOf('*/', i + 2);
+        i = close < 0 || close + 2 > to ? to : close + 2;
+      } else if (WS.test(c)) {
+        spaced = true;
+        i++;
+      } else if (c === '\\') {
+        // (an escaped space: the backslash kept, the space trimmed, as
+        // jsdom 31 does: :is(1x\ , b) is :is(1x\, b))
+        end = i + 1;
+        spaced = false;
+        i += 2;
+        if (!WS.test(source[i - 1] ?? '')) end = i;
+      } else if (c === '"' || c === "'") {
+        i++;
+        while (i < to && source[i] !== c && source[i] !== '\n') i += source[i] === '\\' ? 2 : 1;
+        i = Math.min(i + 1, to);
+        end = i;
+        spaced = false;
+      } else {
+        i++;
+        end = i;
+        spaced = false;
+      }
     }
     if (spaced && this.peek() === ',') this.fail();
     return source.slice(from, end);
@@ -1899,7 +1916,10 @@ function pseudoArgument({ name, arg }) {
       // (items kept as text need not read back as the list did, :is(1x\ , b)
       // as :is(1x\, b): the rule is matched by its text as written)
       if (arg.order31 !== undefined) lossy31 = true;
-      if (arg.order31 !== undefined)
+      // (the text to match by, exact31: the items read only, as the items
+      // kept as text match nothing: @scope (:is(1x\ , .a)) matches .a;
+      // #348 review)
+      if (arg.order31 !== undefined && !exact31)
         return `(${arg.order31.map((item) => (typeof item === 'string' ? item : serializeComplex(item))).join(', ')})`;
       return `(${serializeList31(arg)})`;
     default:

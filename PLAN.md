@@ -9263,3 +9263,10 @@ matched by its text as written (:is(1x\ , b) still matches b); an
 at-rule whose name only starts with scope (@scopeé, @scope\41) is an
 unknown rule, not a TypeError; a style() query is normalized outside
 strings only (style(--x: "style(--y:1)") keeps the string).
+Review round 2 (#348, reproduced): an item kept as text is read forward
+as tokens to find where its text ends (a string may hold /* or */:
+:is(1x"/*"/*tail*/, b) keeps 1x"/*"; an escaped space keeps its
+backslash, 1x\); a scope boundary's text to match by has the items read
+only, those kept as text matching nothing anyway (@scope (:is(1x\ ,
+.a)) matches .a; serializing them for it turned the escaped space into
+an escaped comma).

@@ -767,3 +767,32 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#348 review): an item kept as text in a scope boundary still lets the others match; a string ends before a trailing comment',
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent =
+      '@scope (:is(1x\\ , .a)) { i { color: red } } @scope (.b) to (:is(1x\\ , u)) { s { color: blue } }';
+    d.head.append(style);
+    d.body.innerHTML = '<div class=a><i id=i></i></div><div class=b><u><s id=s></s></u><s id=t></s></div>';
+    const color = (id) => w.getComputedStyle(d.getElementById(id)).color;
+    const out = [[...style.sheet.cssRules].map((r) => [r.start, r.end]), ['i', 's', 't'].map(color)];
+    for (const selector of [':is(1x"/*"/*tail*/, b)', ':is(1x"/*" , b)', ':is(1x"a b", b)', ":is(1x'*/' /**/, b)"]) {
+      let count;
+      try {
+        count = d.querySelectorAll(selector).length;
+      } catch (e) {
+        count = e.name;
+      }
+      const sheet = d.createElement('style');
+      sheet.textContent = `${selector} {}`;
+      d.head.append(sheet);
+      out.push([selector, count, sheet.sheet.cssRules[0]?.selectorText ?? null]);
+      sheet.remove();
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
