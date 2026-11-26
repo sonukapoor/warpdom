@@ -44,7 +44,7 @@ function decomment31(source, parser) {
   let out = '';
   const map = [];
   let named = false; // (the last character copied ends a name or a #)
-  for (let i = 0; i < source.length; ) {
+  for (let i = 0; i < source.length;) {
     const c = source[i];
     if (c === '/' && source[i + 1] === '*') {
       const at = i;
