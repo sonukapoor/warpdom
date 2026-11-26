@@ -4480,13 +4480,35 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
 }
 
+// Where each character of preprocessCss(text) is in text (one more for
+// its end): a CR LF is one character there.
+function preprocessMap(text) {
+  const map = [];
+  for (let i = 0; i < text.length; i++) {
+    map.push(i);
+    if (text[i] === '\r' && text[i + 1] === '\n') i++;
+  }
+  map.push(text.length);
+  return map;
+}
 // A declaration list as jsdom 31 reads it (parse31.js), each declaration
 // then as any other: its name (custom properties keep their case, others
 // are lowercased), its value through declaredValue, the block's model
 // through set31.
 function parseInto31(decls, text, mode, surface, asWritten) {
-  const source = asWritten ? String(text ?? '') : preprocessCss(String(text ?? ''));
+  const written = String(text ?? '');
+  const source = asWritten ? written : preprocessCss(written);
+  // (preprocessing changed the text: a custom property's value is taken
+  // from it as written, CR LF, CR, FF and NUL kept; black box, 31.0.1)
+  let map = null;
   for (const decl of parseDeclarationList31(source)) {
+    if (decl.custom && decl.at !== -1 && source !== written) {
+      map ??= preprocessMap(written);
+      const slice = source.slice(decl.at, decl.end);
+      if (decl.value === slice) decl.value = written.slice(map[decl.at], map[decl.end]);
+      else if (decl.value.startsWith(slice))
+        decl.value = written.slice(map[decl.at], map[decl.end]) + decl.value.slice(slice.length);
+    }
     const name = decl.custom ? decl.name : decl.name.toLowerCase();
     if (dropped(surface, name) || (decl.important && surface.noImportant === true)) continue;
     const declared = declaredValue(name, decl.value, mode, surface);
@@ -6402,7 +6424,9 @@ function setPropertyOf(style, name, value, priority) {
   if (dropped(s.surface, key)) return;
   // jsdom 30: setProperty preprocesses its value as CSS input (parseInto),
   // the accessors do not (black box, #264 item 55).
-  if (s.mode === 'spec' && value != null) value = preprocessCss(String(value));
+  // (jsdom 31 keeps a custom property's value as given, CR LF too)
+  if (s.mode === 'spec' && value != null && !(s.surface?.cssom31 === true && key.startsWith('--')))
+    value = preprocessCss(String(value));
   setDeclaration(style, key, value, priority == null ? '' : priority, 'set');
 }
 function removePropertyOf(style, name) {

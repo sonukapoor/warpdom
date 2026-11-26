@@ -9152,3 +9152,56 @@ without its mark (1000 such selectors, 1000 others, the rule, 1000 more:
 the rule dropped again); clearing the marks now clears the text cache.
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.
+
+## 2026-11-26: jsdom 31, CSS part F3c: computed values (branch feat/269-jsdom31-values, #269)
+
+Black box, 31.0.1; a property sweep (every property jsdom 31 knows times
+1em, 1turn, 100ms, 1em 2em, calc(1em + 1px), 1vw, 0.5rad: 96 computed
+values differed, 30 after, those on experimental properties) and parity
+tests (test/values31.test.js):
+- Every computed dimension absolute, in any value but a custom
+  property's (absolutize31): lengths in px (translateX(1em), box-shadow:
+  1em 1em, grid-template-columns: 1em 2em, transform-origin, filter:
+  blur(1em)), angles in deg (1turn 360deg, 1rad 57.2958deg; rotate,
+  skew(), hue-rotate(), gradients, oblique, offset-rotate, ray()), times
+  in s (100ms 0.1s, 0.0001ms 1e-7s), resolutions in dppx (1x, 96dpi,
+  1dpcm 0.0264583dppx); six digits; a math function that resolves to one
+  value is it (calc(1em + 1px) 11px, calc(180deg) 180deg; calc(10% +
+  1em) calc(10% + 10px)). font-size keeps its own path (em of the
+  parent). jsdom 31 leaves no relative unit in any computed value.
+- url() resolved against the document's base URL (url("a.png") is
+  url("http://host/dir/a.png"), b c.png percent-encoded; empty,
+  #fragment and data: as they are), cached per base and text.
+- drop-shadow(): specified as written with the color first (currentcolor
+  and a 0px blur kept); computed with the color resolved (currentcolor
+  where none) and a 0px blur where none.
+- image-set(): a string is url() in the specified value; computed with
+  the URL resolved and the resolution in dppx.
+- image-orientation: an angle alone is written with a space after it
+  (jsdom 31's "1turn "; computed "360deg ").
+- calc(): + and - need whitespace before them too (2px+ 1px is invalid,
+  as 2px +1px was). Not modeled: a comment before the operator is not
+  whitespace there (2px/**/+ 1px).
+- outline-width, column-rule-width and row-rule-width in whole px (10.9px
+  10px, 0.5px 1px, 0 0px; border widths are not snapped).
+- object-position and perspective-origin computed as positions (left top
+  0% 0%, right 10px bottom 20px calc(100% - 10px) calc(100% - 20px));
+  perspective-origin's specified 1em is 1em center.
+- A custom property's value as written: CR LF, CR, FF and NUL kept
+  (setProperty, cssText, the style attribute, sheets), taken from the
+  text before preprocessing (parse31.js gives the value's place).
+Speed (node 22.17.1, 6 to 10 interleaved runs, medians): load 36.5 to
+36.2 ms; getComputedStyle of keyword properties on fresh elements (31)
+32.4 to 33.1 ms (noise; the pass is skipped without a digit before a
+letter or a url(), needsAbsolute31); of unit-heavy values on fresh
+elements (31) 46.65 to 59.1 ms (+27%): the new work itself, values main
+left as declared (1em, 1turn, 100ms) now computed as jsdom 31 does, with
+url() resolutions and context-free results cached. 30 profile unchanged.
+Not modeled (recorded): relative colors (rgb(from red r g b) is
+color(srgb 1 0 0), lab(from ...) lab(...), with calc(r / 2) written
+calc(0.5 * r) and the origin serialized): needs exact conversions between
+sRGB, linear, XYZ, Lab, OKLab and display-p3 and channel expressions; a
+PR of its own. Experimental properties' values (border-clip, min-size,
+max-size, box-shadow-offset, mask-size's default auto) and 40 values
+whose validity differs on animation-range, glyph-orientation-vertical
+and timeline-trigger properties.

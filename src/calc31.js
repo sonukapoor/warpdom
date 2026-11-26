@@ -311,6 +311,10 @@ function sumOf(tokens) {
     if (i < tokens.length) {
       const tok = tokens[i];
       if (tok.t !== 'delim' || (tok.v !== '+' && tok.v !== '-') || i + 1 >= tokens.length) throw INVALID;
+      // (whitespace on both sides: 2px+ 1px is no sum, as 2px +1px is not;
+      // black box, 31.0.1. Not modeled: a comment there is not whitespace,
+      // 2px/**/+ 1px)
+      if (tokens[i - 1].e !== undefined && tok.s !== undefined && tokens[i - 1].e === tok.s) throw INVALID;
       sign = tok.v === '-' ? -1 : 1;
       i++;
     }

@@ -75,6 +75,7 @@ import {
 import { UNIVERSAL, matchValue31, registrations31 } from './property31.js';
 import { isLengthUnit } from './css-values.js';
 import { documentBaseURL } from './base-url.js';
+import { serializeString31 } from './parse31.js';
 import { present31 } from './color31.js';
 import { shorthand31, alias31, dropped31, composer31 } from './css31.js';
 import {
@@ -2964,6 +2965,15 @@ function absoluteFontSize(element, value) {
 const outlineAuto31 = (element) =>
   computedValue(element, 'outline-style').toLowerCase() === 'auto' ? 'auto' : currentColor(element);
 const LINE_WIDTH31 = new Set(['outline-width', 'column-rule-width', 'row-rule-width']);
+// (in whole px, as a device pixel snaps them: 10.9px is 10px, 0.5px 1px;
+// black box, 31.0.1; border widths are not)
+function lineWidth31(value) {
+  const m = /^((?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)px$/i.exec(value);
+  if (m === null) return null;
+  const px = Number(m[1]);
+  if (px === 0) return '0px';
+  return px < 1 ? '1px' : `${Math.floor(px)}px`;
+}
 const FONT_WIDTHS31 = {
   __proto__: null,
   'ultra-condensed': '50%',
@@ -2987,11 +2997,14 @@ const COMPUTED31 = new Set([
   'offset-position',
   'offset-anchor',
   'mask-position',
+  'object-position',
+  'perspective-origin',
 ]);
 function computed31(element, name, value, data) {
+  if (name === 'filter' && value.includes('drop-shadow(')) return dropShadows31(element, value, data);
   if (!COMPUTED31.has(name)) return null;
   const lower = value.toLowerCase();
-  if (LINE_WIDTH31.has(name)) return BORDER_WIDTHS[lower] ?? null;
+  if (LINE_WIDTH31.has(name)) return BORDER_WIDTHS[lower] ?? lineWidth31(value);
   if (name === 'font-width') return FONT_WIDTHS31[lower] ?? null;
   if (name === 'outline-color' && lower === 'auto') return outlineAuto31(element);
   if (name === 'box-shadow-color') {
@@ -3009,12 +3022,35 @@ function computed31(element, name, value, data) {
     const layers = topLevelCommaSplit(value).map((layer) => edge31(element, tokens31(layer.trim())));
     return layers.includes(null) ? null : layers.join(', ');
   }
-  if (name === 'offset-position' || name === 'offset-anchor') return position31(element, tokens31(value.trim()));
+  if (
+    name === 'offset-position' ||
+    name === 'offset-anchor' ||
+    name === 'object-position' ||
+    name === 'perspective-origin'
+  )
+    return position31(element, tokens31(value.trim()));
   if (name === 'mask-position') {
     const layers = topLevelCommaSplit(value).map((layer) => position31(element, tokens31(layer.trim())));
     return layers.includes(null) ? null : layers.join(', ');
   }
   return null;
+}
+// filter's drop-shadow()s computed (black box, 31.0.1): the color first,
+// resolved (currentcolor where none is given), then the offsets and the
+// blur, 0px where none is given.
+function dropShadows31(element, value, data) {
+  return value.replace(/drop-shadow\(((?:[^()]|\([^()]*\))*)\)/gi, (_, args) => {
+    const lengths = [];
+    const color = [];
+    for (const word of tokens31(args.trim())) {
+      if (word === '0' || /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?px$/i.test(word))
+        lengths.push(word === '0' ? '0px' : word);
+      else color.push(word);
+    }
+    if (lengths.length === 2) lengths.push('0px');
+    const resolved = computeColors(element, 'color', color.length ? color.join(' ') : 'currentcolor', data);
+    return `drop-shadow(${resolved} ${lengths.join(' ')})`;
+  });
 }
 // A position's x or y: a keyword as a percentage, a length in px, an
 // offset from the left or top that length, from the right or bottom 100%
@@ -3067,9 +3103,143 @@ function position31(element, words) {
   return px === null || py === null ? null : `${px} ${py}`;
 }
 
+// jsdom 31's computed dimensions (black box, 31.0.1; #269 part F3c): in
+// any property's value but a custom one's, every length in px (1em,
+// translateX(2rem), box-shadow: 1em 1em), every angle in deg (1turn is
+// 360deg, 1rad 57.2958deg) and time in s (100ms is 0.1s), six digits; a
+// math function that resolves to one value is that value (calc(1em +
+// 1px) is 11px, calc(180deg) 180deg; calc(10% + 1em) is calc(10% +
+// 10px)). Strings and url() as they are. font-size's em is its parent's
+// (absoluteFontSize, below).
+const ANGLE_DEG31 = { grad: 0.9, rad: 180 / Math.PI, turn: 360 };
+const DPPX31 = { x: 1, dpi: 1 / 96, dpcm: 2.54 / 96 };
+const DIMENSION31 = /(?<![\w#.\\-])([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)/gi;
+const HAS_UNIT31 = /\d[a-z]/i;
+const MATH31 = /(?<![\w-])(?:calc|min|max|clamp)\(/gi;
+function absolutize31(element, name, value) {
+  if (name === 'font-size' || name.startsWith('--')) return value;
+  const urls = value.includes('url(');
+  if (!urls && !HAS_UNIT31.test(value)) return value;
+  let ctx = null;
+  const dimension = (match, number, unit) => {
+    const lower = unit.toLowerCase();
+    if (lower === 'px' || lower === 'deg' || lower === 's') return match;
+    const n = Number(number);
+    if (lower === 'ms') return `${sixDigits(n / 1000)}s`;
+    // (resolutions in dppx: image-set(... 1x) is 1dppx, 96dpi 1dppx)
+    const resolution = DPPX31[lower];
+    if (resolution !== undefined) return `${sixDigits(n * resolution)}dppx`;
+    const angle = ANGLE_DEG31[lower];
+    if (angle !== undefined) return `${sixDigits(n * angle)}deg`;
+    ctx ??= new LengthContext(element, false, name === 'line-height');
+    const px = absoluteLength(match, ctx);
+    return px === null ? match : `${sixDigits(px)}px`;
+  };
+  // (no strings nor url(): the value is one piece; kept by value where no
+  // length in it needed the element, 100ms or 1turn)
+  if (!urls && !value.includes('"') && !value.includes("'")) {
+    const known = contextFree31.get(value);
+    if (known !== undefined) return known;
+    let out = value.replace(DIMENSION31, dimension);
+    if (out.includes('(')) out = resolveMath31(out, element, name, ctx);
+    if (ctx === null) {
+      if (contextFree31.size >= 1000) contextFree31.clear();
+      contextFree31.set(value, out);
+    }
+    return out;
+  }
+  // (outside strings and url(): split at them, the odd pieces kept)
+  const pieces = value.split(
+    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\burl\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^)"']*)\s*\))/i,
+  );
+  // (a url() resolved against the document's base URL: url("a.png") is
+  // url("http://host/dir/a.png"); empty, #fragment and data: ones as
+  // they are)
+  if (urls)
+    for (let i = 1; i < pieces.length; i += 2)
+      if (pieces[i][0] === 'u' || pieces[i][0] === 'U') pieces[i] = absoluteURL31(element, pieces[i]);
+  for (let i = 0; i < pieces.length; i += 2) {
+    if (!HAS_UNIT31.test(pieces[i])) continue;
+    pieces[i] = pieces[i].replace(DIMENSION31, dimension);
+    if (pieces[i].includes('(')) pieces[i] = resolveMath31(pieces[i], element, name, ctx);
+  }
+  return pieces.join('');
+}
+const contextFree31 = new Map();
+// Whether value has a digit followed by a letter, or a url(): one pass,
+// no allocation (getComputedStyle reads keywords most).
+function needsAbsolute31(value) {
+  for (let i = 0; i < value.length - 1; i++) {
+    const c = value.charCodeAt(i);
+    if (c >= 48 && c <= 57) {
+      const next = value.charCodeAt(i + 1) | 32;
+      if (next >= 97 && next <= 122) return true;
+    } else if (c === 117 && value.charCodeAt(i + 1) === 114 && value.startsWith('url(', i)) return true;
+  }
+  return false;
+}
+// (resolved once per base and url(): reads repeat them)
+const resolvedURLs31 = new Map();
+function absoluteURL31(element, piece) {
+  const base = documentBaseURL(element[S].doc);
+  const key = `${typeof base === 'string' ? base : base.href}\n${piece}`;
+  let out = resolvedURLs31.get(key);
+  if (out === undefined) {
+    out = piece;
+    let inner = piece.slice(4, -1).trim();
+    if (inner[0] === '"' || inner[0] === "'") inner = inner.slice(1, -1).replace(/\\(.)/gs, '$1');
+    if (inner !== '' && inner[0] !== '#' && !/^data:/i.test(inner)) {
+      try {
+        out = `url(${serializeString31(new URL(inner, base).href)})`;
+      } catch {
+        out = piece;
+      }
+    }
+    if (resolvedURLs31.size >= 1000) resolvedURLs31.clear();
+    resolvedURLs31.set(key, out);
+  }
+  return out;
+}
+// The math functions in text, each resolved to px where it can be, or
+// to the one value it holds (calc(180deg)); the others as they are.
+function resolveMath31(text, element, name, ctx) {
+  let out = '';
+  let from = 0;
+  MATH31.lastIndex = 0;
+  for (let m = MATH31.exec(text); m !== null; m = MATH31.exec(text)) {
+    let depth = 0;
+    let end = -1;
+    for (let k = m.index + m[0].length - 1; k < text.length; k++) {
+      if (text[k] === '(') depth++;
+      else if (text[k] === ')' && --depth === 0) {
+        end = k;
+        break;
+      }
+    }
+    if (end < 0) break;
+    const fn = text.slice(m.index, end + 1);
+    const inner = fn.slice(m[0].length, -1).trim();
+    let resolved = null;
+    if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px|deg|s)$/i.test(inner)) resolved = inner;
+    else {
+      ctx ??= new LengthContext(element, false, name === 'line-height');
+      const px = absoluteLength(fn, ctx);
+      if (px !== null) resolved = `${sixDigits(px)}px`;
+    }
+    if (resolved !== null) {
+      out += text.slice(from, m.index) + resolved;
+      from = end + 1;
+    }
+    MATH31.lastIndex = end + 1;
+  }
+  return out + text.slice(from);
+}
+
 function computeValue(element, name, value, data) {
   const compat = element[S].doc[S].window[S].compat;
   if (compat.computed31) {
+    // (only a value with a unit or a url() in it: most are keywords)
+    if (needsAbsolute31(value)) value = absolutize31(element, name, value);
     const own = computed31(element, name, value, data);
     if (own !== null) return own;
   }
