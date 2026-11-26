@@ -4480,13 +4480,55 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
 }
 
+// Where each character of preprocessCss(text) is in text (one more for
+// its end): a CR LF is one character there.
+function preprocessMap(text) {
+  const map = [];
+  for (let i = 0; i < text.length; i++) {
+    map.push(i);
+    if (text[i] === '\r' && text[i + 1] === '\n') i++;
+  }
+  map.push(text.length);
+  return map;
+}
+// How much of slice (a preprocessed value as the parser saw it) value
+// begins with: all of it, or all but a backslash at its end that closing
+// dropped or read as U+FFFD; -1 for neither.
+function keptPrefix31(slice, value) {
+  if (value.startsWith(slice)) return slice.length;
+  return slice.endsWith('\\') && value.startsWith(slice.slice(0, -1)) ? slice.length - 1 : -1;
+}
+// A custom property's value set with setProperty, closed as the parser
+// closes its preprocessed text (url(a<NUL>b is url(a<NUL>b)), the written
+// characters kept (CR LF, CR, FF, NUL; #349 review).
+function closedWritten31(raw) {
+  const source = preprocessCss(raw);
+  if (source === raw) return closed31(raw);
+  const closed = closed31(source);
+  const kept = keptPrefix31(source, closed);
+  if (kept === -1) return closed;
+  return raw.slice(0, preprocessMap(raw)[kept]) + closed.slice(kept);
+}
 // A declaration list as jsdom 31 reads it (parse31.js), each declaration
 // then as any other: its name (custom properties keep their case, others
 // are lowercased), its value through declaredValue, the block's model
 // through set31.
 function parseInto31(decls, text, mode, surface, asWritten) {
-  const source = asWritten ? String(text ?? '') : preprocessCss(String(text ?? ''));
+  const written = String(text ?? '');
+  const source = asWritten ? written : preprocessCss(written);
+  // (preprocessing changed the text: a custom property's value is taken
+  // from it as written, CR LF, CR, FF and NUL kept; black box, 31.0.1)
+  let map = null;
   for (const decl of parseDeclarationList31(source)) {
+    if (decl.custom && decl.at !== -1 && source !== written) {
+      map ??= preprocessMap(written);
+      const slice = source.slice(decl.at, decl.end);
+      // (the written part: all of it, or up to a backslash at the end that
+      // closing it dropped: a\ is a\uFFFD, "a\ is "a"; then what closing
+      // it added; #349 review)
+      const kept = keptPrefix31(slice, decl.value);
+      if (kept !== -1) decl.value = written.slice(map[decl.at], map[decl.at + kept]) + decl.value.slice(kept);
+    }
     const name = decl.custom ? decl.name : decl.name.toLowerCase();
     if (dropped(surface, name) || (decl.important && surface.noImportant === true)) continue;
     const declared = declaredValue(name, decl.value, mode, surface);
@@ -5801,13 +5843,18 @@ const SYNTAX_SENSITIVE = /[/;"'()[\]{}\\!]/;
 function writtenValue(name, raw, s) {
   // (jsdom 31: one value as CSS Syntax 3 reads it, parse31.js)
   if (s.surface?.cssom31 === true && SYNTAX_SENSITIVE.test(raw)) {
-    const value = parseValue31(raw, name.startsWith('--'));
+    // (a custom property's value is read preprocessed, as a sheet's is:
+    // url(a<NUL>b) valid, "a<CR>b" a bad string; stored as given; #349
+    // review)
+    const custom = name.startsWith('--');
+    const value = parseValue31(custom ? preprocessCss(raw) : raw, custom);
     if (value === null) return INVALID;
     // (a custom property set so keeps its comments, closed: --x: /*a*/ a,
     // (a is (a))
     // (and so does a value with var(), as on main: var(--a) /*x*/; #327
     // review)
-    raw = name.startsWith('--') || hasVarReference(raw) ? closed31(raw) : value;
+    if (custom) raw = closedWritten31(raw);
+    else raw = hasVarReference(raw) ? closed31(raw) : value;
   }
   // (a value kept as written keeps its comments, before it too: #264
   // item 87)
@@ -6418,7 +6465,9 @@ function setPropertyOf(style, name, value, priority) {
   if (dropped(s.surface, key)) return;
   // jsdom 30: setProperty preprocesses its value as CSS input (parseInto),
   // the accessors do not (black box, #264 item 55).
-  if (s.mode === 'spec' && value != null) value = preprocessCss(String(value));
+  // (jsdom 31 keeps a custom property's value as given, CR LF too)
+  if (s.mode === 'spec' && value != null && !(s.surface?.cssom31 === true && key.startsWith('--')))
+    value = preprocessCss(String(value));
   setDeclaration(style, key, value, priority == null ? '' : priority, 'set');
 }
 function removePropertyOf(style, name) {

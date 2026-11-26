@@ -497,7 +497,11 @@ function declaration(text, from, to, closing) {
   const empty = custom && value === '';
   let raw = null;
   if (keepRaw) raw = last >= first ? text.slice(START[first], END[last]) : '';
-  return { name, value: empty ? ' ' : value, important, custom, empty, raw };
+  // (where a custom property's value is in text: its text as written,
+  // before preprocessing, is the value jsdom 31 keeps; css.js parseInto31)
+  const at = custom && last >= first ? START[first] : -1;
+  const end = at === -1 ? -1 : END[last];
+  return { name, value: empty ? ' ' : value, important, custom, empty, raw, at, end };
 }
 
 // A token's text in a value, an identifier's, a hash's or a unit's escapes read when

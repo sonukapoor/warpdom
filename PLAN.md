@@ -9286,3 +9286,116 @@ every profile: a\"b{} c{} was read as a string to the end of the sheet,
 so no rule was kept (main, all versions). Black box 20 to 31 on nine
 sheets: 75 differences before, 55 after (31: 4 to 0; 27 to 30 fewer;
 20 to 26 unchanged, where jsdom's sheet is null for these texts).
+
+## 2026-11-26: jsdom 31, CSS part F3c: computed values (branch feat/269-jsdom31-values, #269)
+
+Black box, 31.0.1; a property sweep (every property jsdom 31 knows times
+1em, 1turn, 100ms, 1em 2em, calc(1em + 1px), 1vw, 0.5rad: 96 computed
+values differed, 30 after, those on experimental properties) and parity
+tests (test/values31.test.js):
+- Every computed dimension absolute, in any value but a custom
+  property's (absolutize31): lengths in px (translateX(1em), box-shadow:
+  1em 1em, grid-template-columns: 1em 2em, transform-origin, filter:
+  blur(1em)), angles in deg (1turn 360deg, 1rad 57.2958deg; rotate,
+  skew(), hue-rotate(), gradients, oblique, offset-rotate, ray()), times
+  in s (100ms 0.1s, 0.0001ms 1e-7s), resolutions in dppx (1x, 96dpi,
+  1dpcm 0.0264583dppx); six digits; a math function that resolves to one
+  value is it (calc(1em + 1px) 11px, calc(180deg) 180deg; calc(10% +
+  1em) calc(10% + 10px)). font-size keeps its own path (em of the
+  parent). jsdom 31 leaves no relative unit in any computed value.
+- url() resolved against the document's base URL (url("a.png") is
+  url("http://host/dir/a.png"), b c.png percent-encoded; empty,
+  #fragment and data: as they are), cached per base and text.
+- drop-shadow(): specified as written with the color first (currentcolor
+  and a 0px blur kept); computed with the color resolved (currentcolor
+  where none) and a 0px blur where none.
+- image-set(): a string is url() in the specified value; computed with
+  the URL resolved and the resolution in dppx.
+- image-orientation: an angle alone is written with a space after it
+  (jsdom 31's "1turn "; computed "360deg ").
+- calc(): + and - need whitespace before them too (2px+ 1px is invalid,
+  as 2px +1px was). Not modeled: a comment before the operator is not
+  whitespace there (2px/**/+ 1px).
+- outline-width, column-rule-width and row-rule-width in whole px (10.9px
+  10px, 0.5px 1px, 0 0px; border widths are not snapped).
+- object-position and perspective-origin computed as positions (left top
+  0% 0%, right 10px bottom 20px calc(100% - 10px) calc(100% - 20px));
+  perspective-origin's specified 1em is 1em center.
+- A custom property's value as written: CR LF, CR, FF and NUL kept
+  (setProperty, cssText, the style attribute, sheets), taken from the
+  text before preprocessing (parse31.js gives the value's place).
+Speed (node 22.17.1, 6 to 10 interleaved runs, medians): load 36.5 to
+36.2 ms; getComputedStyle of keyword properties on fresh elements (31)
+32.4 to 33.1 ms (noise; the pass is skipped without a digit before a
+letter or a url(), needsAbsolute31); of unit-heavy values on fresh
+elements (31) 46.65 to 59.1 ms (+27%): the new work itself, values main
+left as declared (1em, 1turn, 100ms) now computed as jsdom 31 does, with
+url() resolutions and context-free results cached. 30 profile unchanged.
+Not modeled (recorded): relative colors (rgb(from red r g b) is
+color(srgb 1 0 0), lab(from ...) lab(...), with calc(r / 2) written
+calc(0.5 * r) and the origin serialized): needs exact conversions between
+sRGB, linear, XYZ, Lab, OKLab and display-p3 and channel expressions; a
+PR of its own. Experimental properties' values (border-clip, min-size,
+max-size, box-shadow-offset, mask-size's default auto) and 40 values
+whose validity differs on animation-range, glyph-orientation-vertical
+and timeline-trigger properties.
+Review round 1 (#349, reproduced): drop-shadow()'s missing or
+currentcolor color is the element's own color (resolved as filter's, not
+as color's, which reads the parent's), and only real drop-shadow()s are
+computed (outside url() and strings, arguments balanced: a color-mix() in
+one is resolved); names with non-ASCII characters are not read as
+dimensions (é1turn, é1em); a url()'s string escapes are decoded before it
+is resolved (a\1f b.png is a%1Fb.png).
+
+Review round 2 (#349, reproduced on 31.0.1 unless noted): a dimension
+in an identifier after an escape stays as written (animation-name:
+\31 1em, a\+1turn); a math function our px resolver leaves is simplified
+as a declared one (calc(10% + 1em + 2px) is calc(10% + 12px); round(),
+mod(), rem() resolve, so drop-shadow(round(1em, 1px) 2px 3px) reads its
+offsets as lengths); image-set() wraps a string that starts an entry,
+read by token (image-set(url("a, ") 1x, "b.png" 2x)); a custom value
+that ends with a backslash keeps its CR from style and cssText (the
+written text up to the backslash, then U+FFFD and the closers); the
+context-free cache is read before the callback is made. Not changed:
+calc(1px +(2px)) is valid in jsdom 31 too (3px). Bench (node 22.17.1,
+5 interleaved runs, medians, 85c9078 vs this): unit-heavy fresh reads
+57.8 -> 54.9 ms, keyword reads 32.6 -> 31.9, mixed 61.2 -> 60.5 (noise).
+Sweep of every property: 58 of 4410 differ, as before.
+
+Found while probing, left for later (2026-11-26): jsdom 31 clamps a
+math result to the property's range (width: calc(-1px) is 0px; padding,
+gap, flex-basis, border-radius, font-size, line-height; margin is not),
+from the grammar's [0,∞] ranges; hypot() is not resolved here
+(hypot(3em, 4px) is 30.2655px in jsdom 31); abs(-1em) is declared as
+calc(1em) here, abs(-1em) in jsdom 31.
+
+Review round 3 (#349, reproduced on 31.0.1): only calc(), min(), max()
+and clamp() of one value are that value when computed (round 2 had
+widened the math names, so scale(cos(0deg)) became scale(0deg)), dppx
+too (image-set("a.png" calc(1x)) is 1dppx); a custom property set with
+setProperty is read preprocessed, as a sheet's is, and stored as given
+(url(a<NUL>b) valid, "a<CR>b" a bad string, as in jsdom 31); a value
+whose final backslash closing drops (a string's: "a\ is "a") keeps its
+written text before it from style and cssText (NUL, CR LF). Sweep: 58
+of 4410, as before. Left for later with the round 2 items: jsdom 31
+declares trig and sign() simplified (cos(0deg) is calc(1)), rejects
+sin(1px) for width, and computes a number-only calc() unwrapped
+(scale(calc(-1)) is scale(-1)).
+
+Review round 4 (#349, reproduced on 31.0.1): a font-size with a math
+function resolves with em and % of the parent's size (round(1em, 1px)
+is 10px with a 10px parent, calc(10% + 1em) 11px; absoluteFontSize
+reads the rest); setProperty closes a custom value as the parser closes
+its preprocessed text, the written characters kept (url(a<NUL>b is
+url(a<NUL>b), as from cssText); url() resolution uses PlatformURL. Not
+changed: the per-read callback in absolutize31 (CodeRabbit nitpick):
+the benches show no cost (round 2), and a module-level one would need
+its state saved around absoluteLength, which re-enters for the parent's
+font size. Sweep: 58 of 4410, as before.
+
+Review round 5 (#349, Copilot's summary; reproduced on 31.0.1): a
+font-size of percentages only in math resolves too (calc(50%) is 5px
+with a 10px parent); font-size math is now read in absoluteFontSize,
+one loop with no callbacks (CodeRabbit nitpick). Left for later: jsdom
+31 declares round(55%, 1%) as written, this as calc(55%) (the computed
+5.5px is the same).

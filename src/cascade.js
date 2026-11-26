@@ -28,6 +28,7 @@ import {
   connected,
   trackDetachedStyles,
   preprocessCss,
+  PlatformURL,
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import {
@@ -75,6 +76,8 @@ import {
 import { UNIVERSAL, matchValue31, registrations31 } from './property31.js';
 import { isLengthUnit } from './css-values.js';
 import { documentBaseURL } from './base-url.js';
+import { serializeString31 } from './parse31.js';
+import { canonical31 } from './declared31.js';
 import { present31 } from './color31.js';
 import { shorthand31, alias31, dropped31, composer31 } from './css31.js';
 import {
@@ -2938,6 +2941,7 @@ function absoluteFontSize(element, value) {
   }
   const keyword = FONT_SIZE_KEYWORDS[lower];
   if (keyword !== undefined) return `${keyword}px`;
+  if (value.includes('(') && element[S].doc[S].window[S].compat.computed31) value = fontSizeMath31(element, value);
   if (lower === 'larger' || lower === 'smaller' || value.endsWith('%')) {
     const parent = inheritParent(element);
     const base = parent === null ? 16 : fontPx(computedValue(parent, 'font-size'));
@@ -2965,6 +2969,15 @@ function absoluteFontSize(element, value) {
 const outlineAuto31 = (element) =>
   computedValue(element, 'outline-style').toLowerCase() === 'auto' ? 'auto' : currentColor(element);
 const LINE_WIDTH31 = new Set(['outline-width', 'column-rule-width', 'row-rule-width']);
+// (in whole px, as a device pixel snaps them: 10.9px is 10px, 0.5px 1px;
+// black box, 31.0.1; border widths are not)
+function lineWidth31(value) {
+  const m = /^((?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)px$/i.exec(value);
+  if (m === null) return null;
+  const px = Number(m[1]);
+  if (px === 0) return '0px';
+  return px < 1 ? '1px' : `${Math.floor(px)}px`;
+}
 const FONT_WIDTHS31 = {
   __proto__: null,
   'ultra-condensed': '50%',
@@ -2988,11 +3001,14 @@ const COMPUTED31 = new Set([
   'offset-position',
   'offset-anchor',
   'mask-position',
+  'object-position',
+  'perspective-origin',
 ]);
 function computed31(element, name, value, data) {
+  if (name === 'filter' && value.includes('drop-shadow(')) return dropShadows31(element, value, data);
   if (!COMPUTED31.has(name)) return null;
   const lower = value.toLowerCase();
-  if (LINE_WIDTH31.has(name)) return BORDER_WIDTHS[lower] ?? null;
+  if (LINE_WIDTH31.has(name)) return BORDER_WIDTHS[lower] ?? lineWidth31(value);
   if (name === 'font-width') return FONT_WIDTHS31[lower] ?? null;
   if (name === 'outline-color' && lower === 'auto') return outlineAuto31(element);
   if (name === 'box-shadow-color') {
@@ -3010,12 +3026,73 @@ function computed31(element, name, value, data) {
     const layers = topLevelCommaSplit(value).map((layer) => edge31(element, tokens31(layer.trim())));
     return layers.includes(null) ? null : layers.join(', ');
   }
-  if (name === 'offset-position' || name === 'offset-anchor') return position31(element, tokens31(value.trim()));
+  if (
+    name === 'offset-position' ||
+    name === 'offset-anchor' ||
+    name === 'object-position' ||
+    name === 'perspective-origin'
+  )
+    return position31(element, tokens31(value.trim()));
   if (name === 'mask-position') {
     const layers = topLevelCommaSplit(value).map((layer) => position31(element, tokens31(layer.trim())));
     return layers.includes(null) ? null : layers.join(', ');
   }
   return null;
+}
+// filter's drop-shadow()s computed (black box, 31.0.1): the color first,
+// resolved (currentcolor where none is given), then the offsets and the
+// blur, 0px where none is given.
+// (only drop-shadow() functions, outside strings and url(), their
+// arguments balanced; the color as filter's, so currentcolor is the
+// element's own color; #349 review)
+function dropShadows31(element, value, data) {
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    const named = /[\w\u0080-\uffff-]/.test(value[i - 1] ?? '');
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") {
+      i++;
+      while (i < value.length && value[i] !== c) i += value[i] === '\\' ? 2 : 1;
+    } else if (!named && (c === 'u' || c === 'U') && /^url\(/i.test(value.slice(i, i + 4))) {
+      i = parenEnd31(value, i + 3);
+      if (i < 0) break;
+    } else if (!named && (c === 'd' || c === 'D') && /^drop-shadow\(/i.test(value.slice(i, i + 12))) {
+      const close = parenEnd31(value, i + 11);
+      if (close < 0) break;
+      out += value.slice(from, i) + dropShadow31(element, value.slice(i + 12, close), data);
+      from = close + 1;
+      i = close;
+    }
+  }
+  return out + value.slice(from);
+}
+function dropShadow31(element, args, data) {
+  const lengths = [];
+  const color = [];
+  for (const word of tokens31(args.trim())) {
+    if (word === '0' || /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?px$/i.test(word))
+      lengths.push(word === '0' ? '0px' : word);
+    else color.push(word);
+  }
+  if (lengths.length === 2) lengths.push('0px');
+  const resolved = computeColors(element, 'filter', color.length ? color.join(' ') : 'currentcolor', data);
+  return `drop-shadow(${resolved} ${lengths.join(' ')})`;
+}
+// The ) that closes the ( at open, strings and escapes skipped; -1 if none.
+function parenEnd31(text, open) {
+  let depth = 0;
+  for (let k = open; k < text.length; k++) {
+    const c = text[k];
+    if (c === '\\') k++;
+    else if (c === '"' || c === "'") {
+      k++;
+      while (k < text.length && text[k] !== c) k += text[k] === '\\' ? 2 : 1;
+    } else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return k;
+  }
+  return -1;
 }
 // A position's x or y: a keyword as a percentage, a length in px, an
 // offset from the left or top that length, from the right or bottom 100%
@@ -3068,9 +3145,215 @@ function position31(element, words) {
   return px === null || py === null ? null : `${px} ${py}`;
 }
 
+// jsdom 31's computed dimensions (black box, 31.0.1; #269 part F3c): in
+// any property's value but a custom one's, every length in px (1em,
+// translateX(2rem), box-shadow: 1em 1em), every angle in deg (1turn is
+// 360deg, 1rad 57.2958deg) and time in s (100ms is 0.1s), six digits; a
+// math function that resolves to one value is that value (calc(1em +
+// 1px) is 11px, calc(180deg) 180deg; calc(10% + 1em) is calc(10% +
+// 10px)). Strings and url() as they are. font-size's em is its parent's
+// (absoluteFontSize, below).
+const ANGLE_DEG31 = { grad: 0.9, rad: 180 / Math.PI, turn: 360 };
+const DPPX31 = { x: 1, dpi: 1 / 96, dpcm: 2.54 / 96 };
+const DIMENSION31 = /(?<![\w\u0080-\uffff#.\\-])([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)/gi;
+const HAS_UNIT31 = /\d[a-z]/i;
+const MATH31 =
+  /(?<![\w\u0080-\uffff\\-])(?:calc|min|max|clamp|round|mod|rem|abs|sign|hypot|sqrt|pow|exp|log|sin|cos|tan|asin|acos|atan|atan2)\(/gi;
+function absolutize31(element, name, value) {
+  if (name.startsWith('--')) return value;
+  const urls = value.includes('url(');
+  if (!urls && !HAS_UNIT31.test(value)) return value;
+  // (font-size: absoluteFontSize, fontSizeMath31)
+  if (name === 'font-size') return value;
+  // (no strings nor url(): the value is one piece; kept by value where no
+  // length in it needed the element, 100ms or 1turn; looked up before the
+  // callback is made, #349 review)
+  const plain = !urls && !value.includes('"') && !value.includes("'");
+  if (plain) {
+    const known = contextFree31.get(value);
+    if (known !== undefined) return known;
+  }
+  let ctx = null;
+  const dimension = (match, number, unit, at, text) => {
+    // (in an identifier after an escape, as written: \31 1em, a\+1turn;
+    // #349 review)
+    if (afterEscape31(text, at)) return match;
+    const lower = unit.toLowerCase();
+    if (lower === 'px' || lower === 'deg' || lower === 's') return match;
+    const n = Number(number);
+    if (lower === 'ms') return `${sixDigits(n / 1000)}s`;
+    // (resolutions in dppx: image-set(... 1x) is 1dppx, 96dpi 1dppx)
+    const resolution = DPPX31[lower];
+    if (resolution !== undefined) return `${sixDigits(n * resolution)}dppx`;
+    const angle = ANGLE_DEG31[lower];
+    if (angle !== undefined) return `${sixDigits(n * angle)}deg`;
+    ctx ??= new LengthContext(element, name === 'font-size', name === 'line-height');
+    const px = absoluteLength(match, ctx);
+    return px === null ? match : `${sixDigits(px)}px`;
+  };
+  if (plain) {
+    let out = value.replace(DIMENSION31, dimension);
+    if (out.includes('(')) out = resolveMath31(out, element, name, ctx);
+    if (ctx === null) {
+      if (contextFree31.size >= 1000) contextFree31.clear();
+      contextFree31.set(value, out);
+    }
+    return out;
+  }
+  // (outside strings and url(): split at them, the odd pieces kept)
+  const pieces = value.split(
+    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\burl\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^)"']*)\s*\))/i,
+  );
+  // (a url() resolved against the document's base URL: url("a.png") is
+  // url("http://host/dir/a.png"); empty, #fragment and data: ones as
+  // they are)
+  if (urls)
+    for (let i = 1; i < pieces.length; i += 2)
+      if (pieces[i][0] === 'u' || pieces[i][0] === 'U') pieces[i] = absoluteURL31(element, pieces[i]);
+  for (let i = 0; i < pieces.length; i += 2) {
+    if (!HAS_UNIT31.test(pieces[i])) continue;
+    pieces[i] = pieces[i].replace(DIMENSION31, dimension);
+    if (pieces[i].includes('(')) pieces[i] = resolveMath31(pieces[i], element, name, ctx);
+  }
+  return pieces.join('');
+}
+const contextFree31 = new Map();
+// A font-size with a math function (jsdom 31): its lengths and
+// percentages in px of the parent's size, then the math resolved, so
+// round(1em, 1px) and calc(10% + 1em) resolve, calc(50%) too; #349
+// review. One loop, no callbacks; lastIndex set again after each length,
+// as the parent's font size may be computed here too.
+const FONT_TERM31 = /(?<![\w\u0080-\uffff#.\\-])([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+|%)/gi;
+function fontSizeMath31(element, value) {
+  if (value.includes('"') || value.includes("'")) return value;
+  const ctx = new LengthContext(element, true);
+  let out = '';
+  let from = 0;
+  FONT_TERM31.lastIndex = 0;
+  for (let m = FONT_TERM31.exec(value); m !== null; m = FONT_TERM31.exec(value)) {
+    const end = m.index + m[0].length;
+    if (afterEscape31(value, m.index)) continue;
+    const px = m[2] === '%' ? (Number(m[1]) * ctx.em()) / 100 : absoluteLength(m[0], ctx);
+    FONT_TERM31.lastIndex = end;
+    if (px === null) continue;
+    out += `${value.slice(from, m.index)}${sixDigits(px)}px`;
+    from = end;
+  }
+  return resolveMath31(out + value.slice(from), element, 'font-size', ctx);
+}
+const ONE_ARGUMENT31 = /^(?:calc|min|max|clamp)\($/i;
+// Whether text[at] continues an identifier after an escape: the escaped
+// character before it (a\+1turn), or the whitespace that ends a hex
+// escape (\31 1em). Backslashes counted, so \\1em is a dimension.
+function afterEscape31(text, at) {
+  if (at < 2) return false;
+  if (escapes31(text, at - 2)) return true;
+  const c = text.charCodeAt(at - 1);
+  if (c !== 32 && c !== 9 && c !== 10) return false;
+  let k = at - 2;
+  while (k >= 0 && at - 2 - k < 6 && isHex31(text.charCodeAt(k))) k--;
+  return k < at - 2 && escapes31(text, k);
+}
+// Whether text[k] is a backslash that escapes what follows (an odd run).
+function escapes31(text, k) {
+  let slashes = 0;
+  while (k - slashes >= 0 && text.charCodeAt(k - slashes) === 92) slashes++;
+  return slashes % 2 === 1;
+}
+const isHex31 = (c) => (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 102);
+// Whether value has a digit followed by a letter, or a url(): one pass,
+// no allocation (getComputedStyle reads keywords most).
+function needsAbsolute31(value) {
+  for (let i = 0; i < value.length - 1; i++) {
+    const c = value.charCodeAt(i);
+    if (c >= 48 && c <= 57) {
+      const next = value.charCodeAt(i + 1) | 32;
+      if (next >= 97 && next <= 122) return true;
+    } else if (c === 117 && value.charCodeAt(i + 1) === 114 && value.startsWith('url(', i)) return true;
+  }
+  return false;
+}
+// (resolved once per base and url(): reads repeat them)
+const resolvedURLs31 = new Map();
+function absoluteURL31(element, piece) {
+  const base = documentBaseURL(element[S].doc);
+  const key = `${typeof base === 'string' ? base : base.href}\n${piece}`;
+  let out = resolvedURLs31.get(key);
+  if (out === undefined) {
+    out = piece;
+    let inner = piece.slice(4, -1).trim();
+    // (a string's escapes decoded: url("a\1f b.png") is a%1Fb.png; #349 review)
+    if (inner[0] === '"' || inner[0] === "'") inner = decodeEscapes(inner.slice(1, -1));
+    if (inner !== '' && inner[0] !== '#' && !/^data:/i.test(inner)) {
+      try {
+        out = `url(${serializeString31(new PlatformURL(inner, base).href)})`;
+      } catch {
+        out = piece;
+      }
+    }
+    if (resolvedURLs31.size >= 1000) resolvedURLs31.clear();
+    resolvedURLs31.set(key, out);
+  }
+  return out;
+}
+// The math functions in text, each resolved to px where it can be, or
+// to the one value it holds (calc(180deg)); the others as they are.
+function resolveMath31(text, element, name, ctx) {
+  let out = '';
+  let from = 0;
+  MATH31.lastIndex = 0;
+  for (let m = MATH31.exec(text); m !== null; m = MATH31.exec(text)) {
+    let depth = 0;
+    let end = -1;
+    for (let k = m.index + m[0].length - 1; k < text.length; k++) {
+      if (text[k] === '(') depth++;
+      else if (text[k] === ')' && --depth === 0) {
+        end = k;
+        break;
+      }
+    }
+    if (end < 0) break;
+    const fn = text.slice(m.index, end + 1);
+    const inner = fn.slice(m[0].length, -1).trim();
+    let resolved = null;
+    // (calc(), min(), max() or clamp() of one value is that value:
+    // calc(1dppx) is 1dppx; cos(0deg) is no 0deg; #349 review)
+    if (ONE_ARGUMENT31.test(m[0]) && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px|deg|s|dppx)$/i.test(inner))
+      resolved = inner;
+    else {
+      ctx ??= new LengthContext(element, false, name === 'line-height');
+      const px = absoluteLength(fn, ctx);
+      if (px !== null) resolved = `${sixDigits(px)}px`;
+      else resolved = simplified31(fn);
+    }
+    if (resolved !== null) {
+      out += text.slice(from, m.index) + resolved;
+      from = end + 1;
+    }
+    MATH31.lastIndex = end + 1;
+  }
+  return out + text.slice(from);
+}
+
+// A math function of px, deg, s and percentages simplified as a declared
+// one is (calc(10% + 10px + 2px) is calc(10% + 12px), round(10px, 3px)
+// 9px; #349 review), or null when that leaves it as it is. Read as a
+// length, an angle or a time (a property that takes each).
+const MATH_HOSTS31 = ['width', 'rotate', 'transition-duration'];
+const ONE_VALUE31 = /^calc\(([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px|deg|s|dppx))\)$/;
+function simplified31(fn) {
+  for (const host of MATH_HOSTS31) {
+    const out = canonical31(host, fn, true);
+    if (out !== null && out !== fn) return ONE_VALUE31.exec(out)?.[1] ?? out;
+  }
+  return null;
+}
+
 function computeValue(element, name, value, data) {
   const compat = element[S].doc[S].window[S].compat;
   if (compat.computed31) {
+    // (only a value with a unit or a url() in it: most are keywords)
+    if (needsAbsolute31(value)) value = absolutize31(element, name, value);
     const own = computed31(element, name, value, data);
     if (own !== null) return own;
   }
