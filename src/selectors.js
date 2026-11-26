@@ -1485,7 +1485,12 @@ export function ruleSelector31(selector) {
       const list = parser.list();
       text = parser.i < parser.text.length ? null : serializeList31(list);
       if (lossy31 && text !== null) {
-        if (lossyTexts31.size >= CACHE_LIMIT) lossyTexts31.clear();
+        // (the texts cached with them go too: a text kept without its mark
+        // would be matched by its serialization, #346 review)
+        if (lossyTexts31.size >= CACHE_LIMIT) {
+          lossyTexts31.clear();
+          textCache31.clear();
+        }
         lossyTexts31.add(text);
       }
     } catch {

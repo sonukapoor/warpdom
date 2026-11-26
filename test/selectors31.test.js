@@ -565,3 +565,34 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#346 review): an exponent :heading() rule still applies after many others',
+  (w) => {
+    const d = w.document;
+    const sheet = (text) => {
+      const style = d.createElement('style');
+      style.textContent = text;
+      d.head.append(style);
+      void style.sheet.cssRules.length;
+      return style;
+    };
+    const rule = 'p, :heading(123456789012345678901234) { color: red }';
+    const lossy = (from, count) => {
+      const rules = [];
+      for (let k = 0; k < count; k++) rules.push(`:heading(${100001 + from + k}000000000000000000) {}`);
+      sheet(rules.join(' ')).remove();
+    };
+    // (selectors written with an exponent, and others, past what the
+    // selector caches keep: 1000 of each, the rule, 1000 more written with
+    // an exponent)
+    lossy(0, 1000);
+    for (let k = 0; k < 1000; k++) sheet(`q${k} {}`).remove();
+    sheet(rule).remove();
+    lossy(1000, 1000);
+    sheet(rule);
+    d.body.innerHTML = '<p id=p></p>';
+    return w.getComputedStyle(d.getElementById('p')).color;
+  },
+  { jsdom: 31 },
+);

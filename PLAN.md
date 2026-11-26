@@ -9146,6 +9146,9 @@ serializer notes such texts (lossyTexts31), and the rule keeps the text
 it was made from to match by (matchText). Cold sheets 155.85 to 154.5 ms,
 matches 38.95 to 39.15 ms (6 runs; noise). Not reproduced: a reused
 shadow-tree index missing urlRules in another document (adopting the host
-makes the index again there; probed iframe to main document).
+makes the index again there; probed iframe to main document). Seventh
+pass (681ee0c): lossyTexts31 cleared on its own left a cached text
+without its mark (1000 such selectors, 1000 others, the rule, 1000 more:
+the rule dropped again); clearing the marks now clears the text cache.
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.
