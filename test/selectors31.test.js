@@ -596,3 +596,107 @@ parity(
   },
   { jsdom: 31 },
 );
+
+const COMMENTED = [
+  'p/**/b',
+  'p /**/b',
+  'div/**/.a',
+  '#/**/a',
+  '.a/**/p',
+  ':/**/is(p)',
+  'p/**/>b',
+  '-/**/a',
+  '/**/p/**/',
+  '[a=/**/"b"]',
+  'a\\/**/b',
+  ':nth-child(2n/**/+1)',
+  ':nth-child(2/**/n+1)',
+  ':is/**/(p)',
+  '[a="/**/"]',
+];
+parity(
+  'jsdom 31 (#269 part F3b): a comment separates tokens, in queries and rules',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<div class=a><p><b></b></p></div>';
+    const style = d.createElement('style');
+    d.head.append(style);
+    return COMMENTED.map((selector) => {
+      let count;
+      try {
+        count = d.querySelectorAll(selector).length;
+      } catch (e) {
+        count = e.name;
+      }
+      style.textContent = `${selector} {}`;
+      const rule = style.sheet.cssRules[0];
+      return [selector, count, rule ? rule.selectorText : null];
+    });
+  },
+  { jsdom: 31 },
+);
+
+const FORGIVING = [
+  ':is(1x, b)',
+  ':is( 1x, b)',
+  ':is(1x , b)',
+  ':is(1x/* x */,b)',
+  ':is(1x /**/, b)',
+  ':is(b , 1x )',
+  ':is( /**/ )',
+  ':is(1x, )',
+  ':is(1x,,b)',
+  ':is(p/**/:bogus, b)',
+  ':is(a  b:bogus, b)',
+  ':is(:where(1x , b))',
+  ':is(::before, b)',
+  ':where(1x)',
+  'p, :is(1x , b)',
+];
+parity(
+  'jsdom 31 (#269 part F3b): :is() and :where() keep the items they cannot read, as written',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<p><b></b></p>';
+    const style = d.createElement('style');
+    d.head.append(style);
+    return FORGIVING.map((selector) => {
+      let count;
+      try {
+        count = d.querySelectorAll(selector).length;
+      } catch (e) {
+        count = e.name;
+      }
+      style.textContent = `${selector} {}`;
+      const rule = style.sheet.cssRules[0];
+      return [selector, count, rule ? rule.selectorText : null];
+    });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  'jsdom 31 (#269 part F3b): @scope start and end serialized, an end relative, no pseudo-elements, comments',
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent = [
+      '@scope (a>b) to (c   d) {}',
+      "@scope (DIV.A:HOVER, [a='b' i]) to (:IS(P)) {}",
+      '@scope (:heading(01)) {}',
+      '@scope (a /*x*/ b) {}',
+      '@scope (a/*x*/b) {}',
+      '@scope (p::before) {}',
+      '@scope (.a) to (p::before) {}',
+      '@scope (> .a) {}',
+      '@scope (.a) to (> p, span) { b { color: red } }',
+      '@scope (#r) to (~ span) { i { color: green } }',
+    ].join(' ');
+    d.head.append(style);
+    d.body.innerHTML =
+      '<div class=a id=r><p id=p><b id=b><i id=i></i></b></p><span id=s><b id=c></b><i id=j></i></span></div>';
+    const color = (id) => w.getComputedStyle(d.getElementById(id)).color;
+    return [[...style.sheet.cssRules].map((r) => [r.start, r.end, r.cssText]), ['b', 'c', 'i', 'j'].map(color)];
+  },
+  { jsdom: 31 },
+);

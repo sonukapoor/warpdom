@@ -9152,3 +9152,37 @@ without its mark (1000 such selectors, 1000 others, the rule, 1000 more:
 the rule dropped again); clearing the marks now clears the text cache.
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.
+
+## 2026-11-26: jsdom 31, CSS part F3b: the CSSOM details (branch feat/269-jsdom31-cssom-details, #269)
+
+First, the selector follow-ups left from #346 (all already on main, none
+from it; black box, 31.0.1):
+- A comment separates tokens (jsdom 31 reads a selector as CSS tokens):
+  p /**/ b is p b, :/**/is(p) is :is(p), p/**/>b is p > b, but p/**/b,
+  .a/**/p, #/**/a, -/**/a and 2/**/n are two tokens with nothing between,
+  no selector. Queries took no comment at all (they threw), and rules
+  dropped them (p/**/b was pb). decomment31: in a 31 parse, comments are
+  dropped, or where dropping one would join two tokens (after a name or
+  #, before a name, an escape or a parenthesis) replaced by a NUL, which
+  no selector has (preprocessing makes NUL U+FFFD); the parser keeps a map
+  to the text as written. Rule selectors are now read with their comments.
+- :is() and :where() keep the items jsdom 31 cannot read, as written
+  (:is(1x, b), :is(p/**/:bogus, b), :is(1x, , b), :is(::before, b)),
+  with whitespace and comments at their end trimmed; whitespace before a
+  comma after such an item makes the whole list invalid (:is(1x , b),
+  :is(1x /**/, b); not :is(1x/**/, b) or :is(b , 1x)), which a list around
+  it then keeps as an item (:is(:where(1x , b))). order31 on the parsed
+  list: its items in order, those it cannot read as text; they match
+  nothing.
+- @scope's start and end are serialized as jsdom 31's engine writes
+  selectors (a > b, :is(P), [a="b" i], a, b, c, :heading(1) for 01; the
+  prelude in cssText too), from the prelude as written (a/*x*/b drops the
+  rule, a /*x*/ b is a b); pseudo-elements drop it, in either; an end may
+  be relative (to (> p), to (~ span)): the cascade matches it with :scope
+  before its combinator (scopeSelector31's match, which writes every digit
+  of a :heading() level, so that it reads back).
+Load 33.6 to 33.8 ms, cold sheets 152.3 to 154.7 ms, getComputedStyle
+69.25 to 69.9 ms (31) and 61.9 to 61.55 ms (30): noise (5 to 8
+interleaved runs, medians, node 22.17.1); the new work is on a parse.
+Not here: CSS Nesting (the deviation listed above; a nested rule's
+:heading() written with an exponent follows from it).

@@ -53,7 +53,7 @@ import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutCommen
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
-import { compileRuleSelector, matchText31, ruleSelector31, supportsSelector31 } from './selectors.js';
+import { compileRuleSelector, matchText31, ruleSelector31, scopeSelector31, supportsSelector31 } from './selectors.js';
 import { addAttributeStep } from './attributes.js';
 import {
   serializeMedium31,
@@ -807,7 +807,8 @@ function createRule(protos, record, sheet, parentRule) {
     // (from the text as written: only CSS whitespace trimmed, so a leading
     // U+00A0 stays, a type selector)
     let written = null;
-    if (RULES31.has(protos.CSSRule)) written = record.raw === undefined ? record.selector : stripComments(record.raw);
+    // (comments too: they separate tokens, selectors.js decomment31)
+    if (RULES31.has(protos.CSSRule)) written = record.raw ?? record.selector;
     const selectorText = written === null ? record.selector : ruleSelector31(written);
     if (selectorText === null) return null;
     const rule = makeRule(protos, 'CSSStyleRule', sheet, parentRule, {
@@ -856,17 +857,21 @@ function createRule(protos, record, sheet, parentRule) {
     // [ ( <scope-start> ) ]? [ to ( <scope-end> ) ]?; jsdom 31 (black box,
     // 31.0.1) takes selectors with parentheses of their own ((:is(.a, .b)),
     // (div:has(> p))), and to( is a function, not to and a (.
-    const m = MEDIA31.has(protos.MediaList)
-      ? scopePrelude31(prelude)
-      : /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
-    if (!m) return null;
-    // (jsdom 31 trims only CSS whitespace: U+00A0 stays, #346 review)
-    const trim = MEDIA31.has(protos.MediaList) ? cssTrim : (text) => text.trim();
-    rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, {
-      prelude,
-      start: m[1] === undefined ? null : trim(m[1]),
-      end: m[2] === undefined ? null : trim(m[2]),
-    });
+    if (MEDIA31.has(protos.MediaList)) {
+      // (from the text as written: its comments separate tokens)
+      const parts = scopePrelude31(cssTrim(record.raw.slice(RAW_AT.exec(record.raw)[0].length)));
+      if (parts === null) return null;
+      rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, parts);
+    } else {
+      const m = /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
+      if (!m) return null;
+      rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, {
+        prelude,
+        start: m[1]?.trim() ?? null,
+        end: m[2]?.trim() ?? null,
+        match: null,
+      });
+    }
   } else if (at === 'counter-style' && body !== null) {
     if (
       !/^-?[A-Za-z_][\w-]*$/.test(prelude) ||
@@ -1260,12 +1265,22 @@ function deleteRule(owner, index) {
   detach(rule);
 }
 
-// A @scope prelude's [, start, end] (each undefined when left out), or
+// A jsdom 31 @scope prelude as written, read as its CSSScopeRule's data
+// (prelude, start, end, each serialized, and the texts to match by), or
 // null: ( selector ) with balanced parentheses, then to ( selector ).
 function scopePrelude31(text) {
   let i = 0;
+  // (comments too: the text as written, with them)
+  const comment = () => {
+    const close = text.indexOf('*/', i + 2);
+    i = close < 0 ? text.length : close + 2;
+  };
   const ws = () => {
-    while (i < text.length && /[ \t\n\r\f]/.test(text[i])) i++;
+    for (;;) {
+      if (i < text.length && /[ \t\n\r\f]/.test(text[i])) i++;
+      else if (text.startsWith('/*', i)) comment();
+      else return;
+    }
   };
   const group = () => {
     if (text[i] !== '(') return undefined;
@@ -1274,7 +1289,10 @@ function scopePrelude31(text) {
     for (; i < text.length; i++) {
       const c = text[i];
       if (c === '\\') i++;
-      else if (c === '"' || c === "'") {
+      else if (c === '/' && text[i + 1] === '*') {
+        comment();
+        i--;
+      } else if (c === '"' || c === "'") {
         i++;
         while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
       } else if (c === '(') depth++;
@@ -1298,16 +1316,19 @@ function scopePrelude31(text) {
     ws();
   }
   if (i !== text.length) return null;
-  // (selectors the engine knows: ((.a)) drops the rule; & is :scope)
-  for (const selector of [start, end])
-    if (selector !== undefined) {
-      try {
-        compileRuleSelector(selector.replace(/&/g, ':scope'), false, true);
-      } catch {
-        return null;
-      }
-    }
-  return [text, start, end];
+  // (selectors the engine knows, serialized: ((.a)) drops the rule, a
+  // pseudo-element too; an end may be relative, to (> p); black box,
+  // 31.0.1)
+  const from = start === undefined ? null : scopeSelector31(start, false);
+  const to = end === undefined ? null : scopeSelector31(end, true);
+  if (from === false || to === false) return null;
+  const prelude = [from === null ? '' : `(${from.text})`, to === null ? '' : `to (${to.text})`].filter(Boolean);
+  return {
+    prelude: prelude.join(' '),
+    start: from?.text ?? null,
+    end: to?.text ?? null,
+    match: { start: from?.match ?? null, end: to?.match ?? null },
+  };
 }
 
 // --- media lists ----------------------------------------------------------------------
@@ -2310,7 +2331,7 @@ export const CSSOM_INTERFACES = [
         // (jsdom 31: a selector it takes, serialized; comments dropped, a
         // U+00A0 kept: #269 part F3a)
         if (RULES31.has(s.protos.CSSRule)) {
-          const written = stripComments(String(v));
+          const written = String(v);
           const text = ruleSelector31(written);
           if (text !== null) {
             s.selectorText = text;
