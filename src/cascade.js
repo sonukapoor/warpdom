@@ -48,7 +48,7 @@ import {
   backgroundComponents,
   topLevelCommaSplit,
 } from './shorthands.js';
-import { compileRuleSelector, shadowRule } from './selectors.js';
+import { compileRuleSelector, documentURL, shadowRule } from './selectors.js';
 import { directionality } from './directionality.js';
 import {
   absoluteLength,
@@ -287,7 +287,8 @@ const DOCUMENT_ELEMENT = {};
 // selector does not compile.
 // outer: the enclosing @scope's, or null (a nested scope's roots and
 // elements are in it too).
-function scopeOf(rule, ss, outer, root) {
+// spec31: jsdom 31's selector grammar.
+function scopeOf(rule, ss, outer, root, spec31) {
   const { start, end } = rule[S];
   try {
     const owner = ss.ownerNode?.[S].parent ?? null;
@@ -297,8 +298,8 @@ function scopeOf(rule, ss, outer, root) {
     return {
       // (& in a prelude is :scope: the enclosing scope's root for a start,
       // this scope's for an end)
-      start: start === null ? null : compileRuleSelector(scopeTokens(start).text),
-      end: end === null ? null : compileRuleSelector(scopeTokens(end).text),
+      start: start === null ? null : compileRuleSelector(scopeTokens(start).text, false, spec31),
+      end: end === null ? null : compileRuleSelector(scopeTokens(end).text, false, spec31),
       owner: owner !== null && owner[S].type === ELEMENT_NODE ? owner : constructedOwner,
       outer,
     };
@@ -306,11 +307,14 @@ function scopeOf(rule, ss, outer, root) {
     return null;
   }
 }
-// Whether a scope's selectors read text (:empty, :dir(auto)): the index is
-// then made again when text changes (cascadeCache).
-const scopeReadsText = (scope) =>
+// Whether a scope's selectors read text (:empty, :dir(auto); what 'text')
+// or the URL (:local-link; 'url'): computed values then follow it
+// (cascadeCache).
+const scopeReads = (scope, what) =>
   scope !== null &&
-  (scope.start?.some((e) => e.text) === true || scope.end?.some((e) => e.text) === true || scopeReadsText(scope.outer));
+  (scope.start?.some((e) => e[what]) === true ||
+    scope.end?.some((e) => e[what]) === true ||
+    scopeReads(scope.outer, what));
 
 // A scoped rule's selectors: :scope implied before each that has neither
 // :scope nor & (CSS Cascade 6: .b in @scope (.a) is :where(:scope) .b);
@@ -577,6 +581,7 @@ function pseudoTarget() {
   const target = new Map();
   target.inOrder = new InOrderIndex();
   target.textDependent = false;
+  target.urlDependent = false;
   target.readsScheme = false;
   target.scoped = false;
   target.layerCount = 1;
@@ -647,6 +652,7 @@ function indexOf31(element, index) {
   if (index.noPseudo == null) {
     index.noPseudo = pseudoTarget();
     index.noPseudo.textDependent = index.textDependent === true;
+    index.noPseudo.urlDependent = index.urlDependent === true;
     index.noPseudo.readsScheme = index.readsScheme === true;
     index.noPseudo.layerCount = index.layerCount ?? 1;
   }
@@ -869,6 +875,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
   const index = new Map();
   index.inOrder = new InOrderIndex();
   index.textDependent = false;
+  index.urlDependent = false;
   index.readsScheme = false;
   index.scoped = false;
   index.layerCount = 1;
@@ -898,7 +905,10 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
     } catch {
       return false;
     }
-    for (const entry of entries) if (entry.text) index.textDependent = true;
+    for (const entry of entries) {
+      if (entry.text) index.textDependent = true;
+      if (entry.url) index.urlDependent = true;
+    }
     if (scope !== null) {
       target.scoped = true;
       entries = entries.map((entry) => ({ ...entry, match: scopedMatch(entry.match, scope) }));
@@ -926,6 +936,12 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
         rest.push(selector);
         continue;
       }
+      // (:local-link in an element of another tree: the document's elements
+      // then follow its URL, cascadeCache)
+      if (found.url) {
+        index.urlDependent = true;
+        if (doc !== null) doc[S].urlRules = true;
+      }
       const host = found.kind === 'host';
       const sub = host ? (target.hostRules ??= pseudoTarget()) : (target.slottedRules ??= pseudoTarget());
       const match = host ? hostMatch(found.match, root) : slottedMatch(found.match, found.slot, root);
@@ -937,7 +953,9 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
     return rest.join(',');
   };
   const addRule = (rule) => {
-    const text = rule[S].selectorText;
+    // (jsdom 31: the text written where its serialization does not read
+    // back, cssom.js matchText)
+    const text = rule[S].matchText ?? rule[S].selectorText;
     // jsdom 31: selectors ending in a pseudo-element apply to it, through
     // its own index (index.pseudo; black box, 31.0.1)
     if (compat?.computed31 && text.includes(':')) {
@@ -996,12 +1014,13 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
           outerScope = scope;
         if (proto === ss.protos.CSSLayerBlockRule) layer = layerNamed(layers, layer, rule[S].name);
         else if (proto === ss.protos.CSSScopeRule) {
-          scope = scopeOf(rule, ss, outerScope, root);
+          scope = scopeOf(rule, ss, outerScope, root, compat?.treeScopedSheets === true);
           if (scope === null) {
             scope = outerScope;
             continue;
           }
-          if (scopeReadsText(scope)) index.textDependent = true;
+          if (scopeReads(scope, 'text')) index.textDependent = true;
+          if (scopeReads(scope, 'url')) index.urlDependent = true;
         }
         walk31(ruleArray(rule), ss);
         layer = outerLayer;
@@ -1046,6 +1065,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
     for (const target of targets) {
       target.layerCount = layers.length;
       target.textDependent = index.textDependent;
+      target.urlDependent = index.urlDependent;
       target.readsScheme = index.readsScheme;
       for (const lists of target.values()) {
         for (const e of lists.normal) e.layer = keys.normal[e.layer];
@@ -1665,6 +1685,13 @@ function cascadeCache(element) {
   // other trees'; #340 review). The counters only grow, so their sum
   // changes when any of them does.
   const outerRev = crossTree31 ? 1 + (ds.styleRev ?? 0) + cssomChanges.rev + (ds.textRev ?? 0) : 0;
+  // :local-link follows the document's URL, which pushState and
+  // replaceState change with no other change (#346 review); across trees,
+  // once a shadow tree's ::slotted() or :host rules use it (urlRules,
+  // kept: they style elements outside it, whose own index says nothing of
+  // them). (Values a shadow tree inherits from its host are read from the
+  // host's.)
+  const url = index.urlDependent === true || (crossTree31 && ds.urlRules === true) ? documentURL(ds) : null;
   const inlineMap = inlineDeclarations(element);
   if (
     !cache ||
@@ -1672,6 +1699,7 @@ function cascadeCache(element) {
     cache.doc !== ds ||
     cache.index !== index ||
     cache.outerRev !== outerRev ||
+    cache.url !== url ||
     cache.rev !== rev ||
     cache.textRev !== textRev ||
     cache.inline !== inlineMap ||
@@ -1702,6 +1730,7 @@ function cascadeCache(element) {
       rev,
       textRev,
       outerRev,
+      url,
       inline: inlineMap,
       values: new Map(),
       inner: undefined,

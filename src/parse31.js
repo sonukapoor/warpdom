@@ -601,6 +601,20 @@ export function closed31(text) {
 
 // A property name as CSSOM serializes an identifier (--a:b is --a\:b).
 const PLAIN_NAME = /^(?:--|-?[A-Za-z_\u0080-\uffff])[A-Za-z0-9_\u0080-\uffff-]*$/;
+// CSSOM's serialize a string: in double quotes, ", \ and control
+// characters escaped.
+export function serializeString31(value) {
+  let out = '"';
+  for (const ch of value) {
+    const c = ch.codePointAt(0);
+    if (c === 0) out += '\uFFFD';
+    else if ((c >= 1 && c <= 0x1f) || c === 0x7f) out += `\\${c.toString(16)} `;
+    else if (ch === '"' || ch === '\\') out += `\\${ch}`;
+    else out += ch;
+  }
+  return `${out}"`;
+}
+
 export function serializeName31(name) {
   if (PLAIN_NAME.test(name)) return name;
   let out = '';

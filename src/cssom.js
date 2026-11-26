@@ -53,7 +53,7 @@ import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutCommen
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
-import { compileRuleSelector } from './selectors.js';
+import { compileRuleSelector, matchText31, ruleSelector31, supportsSelector31 } from './selectors.js';
 import { addAttributeStep } from './attributes.js';
 import {
   serializeMedium31,
@@ -176,11 +176,14 @@ function stripComments(text) {
 // { at, prelude, body } for at-rules (body null for statements). With
 // `strict`, anything else is reported as { invalid: true } (insertRule's
 // garbage after a rule).
-export function parseRules(text, strict = false, nested = false) {
+// css31: jsdom 31's, where only CSS whitespace separates rules (a U+00A0
+// starts a selector: " .t", #269 part F3a).
+export function parseRules(text, strict = false, nested = false, css31 = false) {
   const records = [];
+  const space = css31 ? CSS_SPACE : /[\s]/;
   let i = 0;
   while (i < text.length) {
-    while (i < text.length && /[\s]/.test(text[i])) i++;
+    while (i < text.length && space.test(text[i])) i++;
     if (text.startsWith('/*', i)) {
       i = skipToken(text, i);
       continue;
@@ -201,7 +204,7 @@ export function parseRules(text, strict = false, nested = false) {
     }
     const end = preludeEnd(text, i);
     const raw = text.slice(i, end);
-    const prelude = stripComments(raw).trim();
+    const prelude = css31 ? cssTrim(stripComments(raw)) : stripComments(raw).trim();
     let body = null;
     if (text[end] === '{') {
       const close = blockEnd(text, end, nested);
@@ -217,7 +220,7 @@ export function parseRules(text, strict = false, nested = false) {
       if (m) records.push({ at: m[1].toLowerCase(), prelude: prelude.slice(m[0].length).trim(), body, raw });
       else if (strict) records.push({ invalid: true });
     } else if (body !== null && prelude !== '') {
-      records.push({ selector: prelude, body });
+      records.push({ selector: prelude, body, raw });
     } else if (strict && prelude !== '') {
       records.push({ invalid: true });
     }
@@ -230,7 +233,7 @@ export function parseRules(text, strict = false, nested = false) {
 // follows a rule (a{}; and a{} b{} inserted a), and so does its profile.
 function parseOneRule(text, protos) {
   if (isLegacyMode(protosMode(protos))) return parseRules(text)[0] ?? null;
-  const records = parseRules(text, true, nestedBlocks(protos));
+  const records = parseRules(text, true, nestedBlocks(protos), RULES31.has(protos.CSSRule));
   return records.length === 1 && !records[0].invalid ? records[0] : null;
 }
 
@@ -506,6 +509,9 @@ const ACEMIR_RULES = new WeakSet();
 // (rules31.js): @starting-style, @font-feature-values,
 // @font-palette-values, @position-try, @view-transition.
 const RULES31 = new WeakSet();
+const CSS_SPACE = /[ \t\n\r\f]/;
+// (only CSS whitespace: a U+00A0 stays, a type selector)
+const cssTrim = (text) => text.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, '');
 // The rule interfaces whose prototypes have a cssRules data property there.
 const OWN_RULE_LISTS = new Set(['CSSMediaRule', 'CSSSupportsRule', 'CSSContainerRule', 'CSSLayerBlockRule']);
 
@@ -571,7 +577,7 @@ function ruleList(protos, body, sheet, parent) {
   if (parent === null && MEDIA31.has(protos.MediaList) && tooDeep(body ?? '')) return rules;
   let prefixOnly = parent === null; // only @import and @namespace rules so far
   let namespaces = false;
-  for (const record of parseRules(body ?? '', false, nestedBlocks(protos))) {
+  for (const record of parseRules(body ?? '', false, nestedBlocks(protos), RULES31.has(protos.CSSRule))) {
     const rule = createRule(protos, record, sheet, parent);
     if (!rule) continue;
     if (isImport(rule)) {
@@ -796,8 +802,17 @@ function createRule(protos, record, sheet, parentRule) {
     // A grouping rule (CSS nesting), with no nested rules parsed yet, as in jsdom.
     // body: the text its cssom style is made from (cssomStyle).
     const legacy = legacyRules(protos);
+    // (jsdom 31: a selector its engine refuses drops the rule; the others
+    // are serialized, #269 part F3a)
+    // (from the text as written: only CSS whitespace trimmed, so a leading
+    // U+00A0 stays, a type selector)
+    let written = null;
+    if (RULES31.has(protos.CSSRule)) written = record.raw === undefined ? record.selector : stripComments(record.raw);
+    const selectorText = written === null ? record.selector : ruleSelector31(written);
+    if (selectorText === null) return null;
     const rule = makeRule(protos, 'CSSStyleRule', sheet, parentRule, {
-      selectorText: record.selector,
+      selectorText,
+      matchText: written === null ? undefined : matchText31(written, selectorText),
       rules: [],
       style: null,
       body: legacy ? record.body : undefined,
@@ -845,10 +860,12 @@ function createRule(protos, record, sheet, parentRule) {
       ? scopePrelude31(prelude)
       : /^(?:\(([^()]*)\))?\s*(?:to\s*\(([^()]*)\))?$/is.exec(prelude);
     if (!m) return null;
+    // (jsdom 31 trims only CSS whitespace: U+00A0 stays, #346 review)
+    const trim = MEDIA31.has(protos.MediaList) ? cssTrim : (text) => text.trim();
     rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, {
       prelude,
-      start: m[1]?.trim() ?? null,
-      end: m[2]?.trim() ?? null,
+      start: m[1] === undefined ? null : trim(m[1]),
+      end: m[2] === undefined ? null : trim(m[2]),
     });
   } else if (at === 'counter-style' && body !== null) {
     if (
@@ -885,7 +902,7 @@ function createRule(protos, record, sheet, parentRule) {
     return selector === null ? null : pageRule(protos, selector, body, sheet, parentRule);
   } else if (KEYFRAMES.has(at) && body !== null) {
     rule = makeRule(protos, 'CSSKeyframesRule', sheet, parentRule, { name: prelude, indexed: 0 });
-    rule[S].rules = parseRules(body, false, nestedBlocks(protos))
+    rule[S].rules = parseRules(body, false, nestedBlocks(protos), RULES31.has(protos.CSSRule))
       .map((r) => keyframe(protos, r, sheet, rule))
       .filter(Boolean);
     indexKeyframes(rule);
@@ -1285,7 +1302,7 @@ function scopePrelude31(text) {
   for (const selector of [start, end])
     if (selector !== undefined) {
       try {
-        compileRuleSelector(selector.replace(/&/g, ':scope'));
+        compileRuleSelector(selector.replace(/&/g, ':scope'), false, true);
       } catch {
         return null;
       }
@@ -1329,17 +1346,8 @@ function setMediaText(list, text) {
 export function supportsMatches(rule) {
   const s = rule[S];
   if (s.supports31 === null || s.supports31 === undefined) return supportsRuleMatches(s.conditionText);
-  return supportsHold31(s.supports31, supportsDeclarationOf(s.protos), selectorKnown);
-}
-// (jsdom 31: as its cascade reads a shadow tree's rules, :host-context()
-// too; #342 review)
-function selectorKnown(text) {
-  try {
-    compileRuleSelector(text, true);
-    return true;
-  } catch {
-    return false;
-  }
+  // (jsdom 31's selector(): selectors.js supportsSelector31)
+  return supportsHold31(s.supports31, supportsDeclarationOf(s.protos), supportsSelector31);
 }
 
 // Whether a media list matches: as jsdom 31 evaluates queries; before,
@@ -2299,6 +2307,18 @@ export const CSSOM_INTERFACES = [
       },
       set selectorText(v) {
         const s = state(this);
+        // (jsdom 31: a selector it takes, serialized; comments dropped, a
+        // U+00A0 kept: #269 part F3a)
+        if (RULES31.has(s.protos.CSSRule)) {
+          const written = stripComments(String(v));
+          const text = ruleSelector31(written);
+          if (text !== null) {
+            s.selectorText = text;
+            s.matchText = matchText31(written, text);
+            cssomChanges.rev++;
+          }
+          return;
+        }
         const t = String(v).trim();
         if (validSelector(t)) {
           s.selectorText = t;
