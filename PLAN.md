@@ -9119,6 +9119,13 @@ iframe's links to about:blank match, not those to its creator's page).
 Third pass (21e0beb, both reproduced): \*::slotted(i) lost the compound's
 named in the shadow rule and matched any slot (it now matches none, as in
 jsdom 31); CSSScopeRule.start and end trim CSS whitespace only in 31
-(U+00A0 stays, as in the prelude).
+(U+00A0 stays, as in the prelude). Fourth pass (a1de0e6, Copilot's
+summary only; probed): computed styles from :local-link rules kept their
+values after pushState or replaceState (querySelectorAll was right); a
+rule index whose selectors use :local-link is now urlDependent and an
+element's cached values carry the document URL. Scope boundaries with
+non-CSS whitespace (U+00A0, U+2003, a vertical tab): all as jsdom 31.
+getComputedStyle, 200k reads (6 interleaved runs, medians): 68.6 to
+68.5 ms (30 profile), 74.65 to 75.85 ms (31; noise).
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.

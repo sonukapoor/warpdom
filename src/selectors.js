@@ -958,11 +958,16 @@ let compilingDynamic = false;
 // empty text child is not content.
 const TEXT_DEPENDENT = new Set(['dir', 'valid', 'invalid', 'placeholder-shown', 'empty', 'blank']);
 let compilingText = false;
+// :local-link reads the document's URL, which pushState and replaceState
+// change with the tree as it was: rule selectors using it make computed
+// styles follow the URL (cascade.js cascadeCache, urlDependent).
+let compilingURL = false;
 
 function compilePseudo({ name, arg }) {
   if (DYNAMIC.has(name)) {
     compilingDynamic = true;
     if (TEXT_DEPENDENT.has(name)) compilingText = true;
+    else if (name === 'local-link') compilingURL = true;
   }
   switch (name) {
     case 'not': {
@@ -1172,9 +1177,13 @@ function isLocalLink(el) {
   if (url === null) return false;
   // (the document's own URL: an about:blank iframe's is about:blank, not
   // the base it takes from its creator)
-  const ds = s.doc[S];
+  return withoutFragment(url.href) === withoutFragment(documentURL(s.doc[S]));
+}
+// A document's own URL (its state's; a window's document has none and
+// takes the window's).
+export function documentURL(ds) {
   const doc = ds.url ?? ds.window[S].url.href;
-  return withoutFragment(url.href) === withoutFragment(typeof doc === 'string' ? doc : doc.href);
+  return typeof doc === 'string' ? doc : doc.href;
 }
 
 // The language of an element (HTML 3.2.6.2): its lang attribute in the XML
@@ -1447,8 +1456,9 @@ export function compileRuleSelector(selector, scoping = false, spec31 = scoping)
       if (parser.i < parser.text.length) throw invalid(text);
       entries = list.map((complex) => {
         compilingText = false;
+        compilingURL = false;
         const match = compileComplex(complex);
-        return { match, specificity: complexSpecificity(complex), text: compilingText };
+        return { match, specificity: complexSpecificity(complex), text: compilingText, url: compilingURL };
       });
     } finally {
       hostScoping = false;

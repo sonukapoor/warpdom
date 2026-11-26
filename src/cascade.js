@@ -48,7 +48,7 @@ import {
   backgroundComponents,
   topLevelCommaSplit,
 } from './shorthands.js';
-import { compileRuleSelector, shadowRule } from './selectors.js';
+import { compileRuleSelector, documentURL, shadowRule } from './selectors.js';
 import { directionality } from './directionality.js';
 import {
   absoluteLength,
@@ -307,11 +307,14 @@ function scopeOf(rule, ss, outer, root, spec31) {
     return null;
   }
 }
-// Whether a scope's selectors read text (:empty, :dir(auto)): the index is
-// then made again when text changes (cascadeCache).
-const scopeReadsText = (scope) =>
+// Whether a scope's selectors read text (:empty, :dir(auto); what 'text')
+// or the URL (:local-link; 'url'): computed values then follow it
+// (cascadeCache).
+const scopeReads = (scope, what) =>
   scope !== null &&
-  (scope.start?.some((e) => e.text) === true || scope.end?.some((e) => e.text) === true || scopeReadsText(scope.outer));
+  (scope.start?.some((e) => e[what]) === true ||
+    scope.end?.some((e) => e[what]) === true ||
+    scopeReads(scope.outer, what));
 
 // A scoped rule's selectors: :scope implied before each that has neither
 // :scope nor & (CSS Cascade 6: .b in @scope (.a) is :where(:scope) .b);
@@ -578,6 +581,7 @@ function pseudoTarget() {
   const target = new Map();
   target.inOrder = new InOrderIndex();
   target.textDependent = false;
+  target.urlDependent = false;
   target.readsScheme = false;
   target.scoped = false;
   target.layerCount = 1;
@@ -648,6 +652,7 @@ function indexOf31(element, index) {
   if (index.noPseudo == null) {
     index.noPseudo = pseudoTarget();
     index.noPseudo.textDependent = index.textDependent === true;
+    index.noPseudo.urlDependent = index.urlDependent === true;
     index.noPseudo.readsScheme = index.readsScheme === true;
     index.noPseudo.layerCount = index.layerCount ?? 1;
   }
@@ -870,6 +875,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
   const index = new Map();
   index.inOrder = new InOrderIndex();
   index.textDependent = false;
+  index.urlDependent = false;
   index.readsScheme = false;
   index.scoped = false;
   index.layerCount = 1;
@@ -899,7 +905,10 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
     } catch {
       return false;
     }
-    for (const entry of entries) if (entry.text) index.textDependent = true;
+    for (const entry of entries) {
+      if (entry.text) index.textDependent = true;
+      if (entry.url) index.urlDependent = true;
+    }
     if (scope !== null) {
       target.scoped = true;
       entries = entries.map((entry) => ({ ...entry, match: scopedMatch(entry.match, scope) }));
@@ -1002,7 +1011,8 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
             scope = outerScope;
             continue;
           }
-          if (scopeReadsText(scope)) index.textDependent = true;
+          if (scopeReads(scope, 'text')) index.textDependent = true;
+          if (scopeReads(scope, 'url')) index.urlDependent = true;
         }
         walk31(ruleArray(rule), ss);
         layer = outerLayer;
@@ -1047,6 +1057,7 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
     for (const target of targets) {
       target.layerCount = layers.length;
       target.textDependent = index.textDependent;
+      target.urlDependent = index.urlDependent;
       target.readsScheme = index.readsScheme;
       for (const lists of target.values()) {
         for (const e of lists.normal) e.layer = keys.normal[e.layer];
@@ -1666,6 +1677,10 @@ function cascadeCache(element) {
   // other trees'; #340 review). The counters only grow, so their sum
   // changes when any of them does.
   const outerRev = crossTree31 ? 1 + (ds.styleRev ?? 0) + cssomChanges.rev + (ds.textRev ?? 0) : 0;
+  // :local-link follows the document's URL, which pushState and
+  // replaceState change with no other change (#346 review). (Values a
+  // shadow tree inherits from its host are read from the host's.)
+  const url = index.urlDependent === true ? documentURL(ds) : null;
   const inlineMap = inlineDeclarations(element);
   if (
     !cache ||
@@ -1673,6 +1688,7 @@ function cascadeCache(element) {
     cache.doc !== ds ||
     cache.index !== index ||
     cache.outerRev !== outerRev ||
+    cache.url !== url ||
     cache.rev !== rev ||
     cache.textRev !== textRev ||
     cache.inline !== inlineMap ||
@@ -1703,6 +1719,7 @@ function cascadeCache(element) {
       rev,
       textRev,
       outerRev,
+      url,
       inline: inlineMap,
       values: new Map(),
       inner: undefined,

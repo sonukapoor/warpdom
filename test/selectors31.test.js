@@ -477,3 +477,28 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#346 review): :local-link styles follow pushState and replaceState, across shadow trees too',
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent = 'a:local-link { color: red } #h:local-link { color: green }';
+    d.head.append(style);
+    const here = new URL(w.location.href);
+    d.body.innerHTML = `<a id=a href="${here.pathname}">a</a><a id=b href="/other">b</a><a id=h href="/other"><span id=s></span></a>`;
+    d.getElementById('s').attachShadow({ mode: 'open' }).innerHTML = '<i>i</i>';
+    const inner = d.getElementById('s').shadowRoot.firstChild;
+    const read = () => [
+      ...['a', 'b'].map((id) => w.getComputedStyle(d.getElementById(id)).color),
+      w.getComputedStyle(inner).color,
+    ];
+    const out = [read()];
+    w.history.pushState(null, '', '/other');
+    out.push(read());
+    w.history.replaceState(null, '', `${here.pathname}?q`);
+    out.push(read());
+    return out;
+  },
+  { jsdom: 31 },
+);
