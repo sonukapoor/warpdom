@@ -3038,19 +3038,57 @@ function computed31(element, name, value, data) {
 // filter's drop-shadow()s computed (black box, 31.0.1): the color first,
 // resolved (currentcolor where none is given), then the offsets and the
 // blur, 0px where none is given.
+// (only drop-shadow() functions, outside strings and url(), their
+// arguments balanced; the color as filter's, so currentcolor is the
+// element's own color; #349 review)
 function dropShadows31(element, value, data) {
-  return value.replace(/drop-shadow\(((?:[^()]|\([^()]*\))*)\)/gi, (_, args) => {
-    const lengths = [];
-    const color = [];
-    for (const word of tokens31(args.trim())) {
-      if (word === '0' || /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?px$/i.test(word))
-        lengths.push(word === '0' ? '0px' : word);
-      else color.push(word);
+  let out = '';
+  let from = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    const named = /[\w\u0080-\uffff-]/.test(value[i - 1] ?? '');
+    if (c === '\\') i++;
+    else if (c === '"' || c === "'") {
+      i++;
+      while (i < value.length && value[i] !== c) i += value[i] === '\\' ? 2 : 1;
+    } else if (!named && (c === 'u' || c === 'U') && /^url\(/i.test(value.slice(i, i + 4))) {
+      i = parenEnd31(value, i + 3);
+      if (i < 0) break;
+    } else if (!named && (c === 'd' || c === 'D') && /^drop-shadow\(/i.test(value.slice(i, i + 12))) {
+      const close = parenEnd31(value, i + 11);
+      if (close < 0) break;
+      out += value.slice(from, i) + dropShadow31(element, value.slice(i + 12, close), data);
+      from = close + 1;
+      i = close;
     }
-    if (lengths.length === 2) lengths.push('0px');
-    const resolved = computeColors(element, 'color', color.length ? color.join(' ') : 'currentcolor', data);
-    return `drop-shadow(${resolved} ${lengths.join(' ')})`;
-  });
+  }
+  return out + value.slice(from);
+}
+function dropShadow31(element, args, data) {
+  const lengths = [];
+  const color = [];
+  for (const word of tokens31(args.trim())) {
+    if (word === '0' || /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?px$/i.test(word))
+      lengths.push(word === '0' ? '0px' : word);
+    else color.push(word);
+  }
+  if (lengths.length === 2) lengths.push('0px');
+  const resolved = computeColors(element, 'filter', color.length ? color.join(' ') : 'currentcolor', data);
+  return `drop-shadow(${resolved} ${lengths.join(' ')})`;
+}
+// The ) that closes the ( at open, strings and escapes skipped; -1 if none.
+function parenEnd31(text, open) {
+  let depth = 0;
+  for (let k = open; k < text.length; k++) {
+    const c = text[k];
+    if (c === '\\') k++;
+    else if (c === '"' || c === "'") {
+      k++;
+      while (k < text.length && text[k] !== c) k += text[k] === '\\' ? 2 : 1;
+    } else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return k;
+  }
+  return -1;
 }
 // A position's x or y: a keyword as a percentage, a length in px, an
 // offset from the left or top that length, from the right or bottom 100%
@@ -3113,9 +3151,9 @@ function position31(element, words) {
 // (absoluteFontSize, below).
 const ANGLE_DEG31 = { grad: 0.9, rad: 180 / Math.PI, turn: 360 };
 const DPPX31 = { x: 1, dpi: 1 / 96, dpcm: 2.54 / 96 };
-const DIMENSION31 = /(?<![\w#.\\-])([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)/gi;
+const DIMENSION31 = /(?<![\w\u0080-\uffff#.\\-])([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)/gi;
 const HAS_UNIT31 = /\d[a-z]/i;
-const MATH31 = /(?<![\w-])(?:calc|min|max|clamp)\(/gi;
+const MATH31 = /(?<![\w\u0080-\uffff-])(?:calc|min|max|clamp)\(/gi;
 function absolutize31(element, name, value) {
   if (name === 'font-size' || name.startsWith('--')) return value;
   const urls = value.includes('url(');
@@ -3187,7 +3225,8 @@ function absoluteURL31(element, piece) {
   if (out === undefined) {
     out = piece;
     let inner = piece.slice(4, -1).trim();
-    if (inner[0] === '"' || inner[0] === "'") inner = inner.slice(1, -1).replace(/\\(.)/gs, '$1');
+    // (a string's escapes decoded: url("a\1f b.png") is a%1Fb.png; #349 review)
+    if (inner[0] === '"' || inner[0] === "'") inner = decodeEscapes(inner.slice(1, -1));
     if (inner !== '' && inner[0] !== '#' && !/^data:/i.test(inner)) {
       try {
         out = `url(${serializeString31(new URL(inner, base).href)})`;

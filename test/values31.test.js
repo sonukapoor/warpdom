@@ -195,3 +195,30 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  "jsdom 31 (#349 review): drop-shadow's currentcolor is the element's, only real drop-shadow()s, names kept, escapes in url() decoded",
+  (w) => {
+    const d = w.document;
+    const parent = d.createElement('div');
+    parent.style.color = 'blue';
+    d.body.append(parent);
+    return [
+      ['filter', 'color: red; filter: drop-shadow(1px 1px)'],
+      ['filter', 'color: red; filter: drop-shadow(currentcolor 1px 1px)'],
+      ['filter', 'color: red; filter: drop-shadow(color-mix(in srgb, currentcolor, blue) 1px 1px)'],
+      ['filter', 'filter: url("#drop-shadow(red)") drop-shadow(1px 1px red)'],
+      ['filter', 'filter: drop-shadow(color-mix(in srgb, rgb(255, 0, 0), blue) 1px 1px)'],
+      ['animation-name', 'animation-name: é1turn'],
+      ['font-family', 'font-family: é1em'],
+      ['background-image', 'background-image: url("a\\1f b.png")'],
+      ['background-image', 'background-image: url("a\\"b.png")'],
+    ].map(([name, text]) => {
+      const el = d.createElement('div');
+      parent.append(el);
+      el.setAttribute('style', text);
+      return w.getComputedStyle(el).getPropertyValue(name);
+    });
+  },
+  { jsdom: 31 },
+);

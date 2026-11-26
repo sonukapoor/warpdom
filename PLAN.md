@@ -9205,3 +9205,10 @@ PR of its own. Experimental properties' values (border-clip, min-size,
 max-size, box-shadow-offset, mask-size's default auto) and 40 values
 whose validity differs on animation-range, glyph-orientation-vertical
 and timeline-trigger properties.
+Review round 1 (#349, reproduced): drop-shadow()'s missing or
+currentcolor color is the element's own color (resolved as filter's, not
+as color's, which reads the parent's), and only real drop-shadow()s are
+computed (outside url() and strings, arguments balanced: a color-mix() in
+one is resolved); names with non-ASCII characters are not read as
+dimensions (é1turn, é1em); a url()'s string escapes are decoded before it
+is resolved (a\1f b.png is a%1Fb.png).
