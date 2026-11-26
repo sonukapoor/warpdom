@@ -1479,10 +1479,15 @@ export function ruleSelector31(selector) {
   if (text === undefined) {
     hostScoping = true;
     grammar31 = true;
+    lossy31 = false;
     try {
       const parser = new Parser(selector);
       const list = parser.list();
       text = parser.i < parser.text.length ? null : serializeList31(list);
+      if (lossy31 && text !== null) {
+        if (lossyTexts31.size >= CACHE_LIMIT) lossyTexts31.clear();
+        lossyTexts31.add(text);
+      }
     } catch {
       text = null;
     } finally {
@@ -1739,7 +1744,7 @@ function pseudoArgument({ name, arg }) {
     case 'heading':
       // (six significant digits, as jsdom 31 writes numbers: 1234570,
       // 1.23457e+23; #346 review)
-      return `(${arg.map((n) => String(Number(n.toPrecision(6)))).join(', ')})`;
+      return `(${arg.map(level31).join(', ')})`;
     case 'active-view-transition-type':
       return `(${arg.map(serializeName31).join(', ')})`;
     case 'dir':
@@ -1750,6 +1755,20 @@ function pseudoArgument({ name, arg }) {
   }
 }
 
+// (an exponent, 1.23457e+23, is no level when read back: the rule's
+// selector is then compiled from its text as written, lossyTexts31)
+function level31(n) {
+  const text = String(Number(n.toPrecision(6)));
+  if (text.includes('e')) lossy31 = true;
+  return text;
+}
+let lossy31 = false;
+// Selectors ruleSelector31 wrote that do not read back as they were.
+const lossyTexts31 = new Set();
+// The text a rule's selector is matched by in jsdom 31 (cascade.js
+// addRule): its serialization, or where that does not read back, the
+// text it was made from (undefined: the serialization).
+export const matchText31 = (written, text) => (lossyTexts31.has(text) ? written : undefined);
 const langRange = ({ ident, string }) => (ident === undefined ? serializeString31(string) : serializeName31(ident));
 
 // (CSS Syntax 3's serialize <an+b>)

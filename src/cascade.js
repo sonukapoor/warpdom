@@ -953,7 +953,9 @@ function buildIndex(sheets, mode, compat, lists, doc = null, root = null) {
     return rest.join(',');
   };
   const addRule = (rule) => {
-    const text = rule[S].selectorText;
+    // (jsdom 31: the text written where its serialization does not read
+    // back, cssom.js matchText)
+    const text = rule[S].matchText ?? rule[S].selectorText;
     // jsdom 31: selectors ending in a pseudo-element apply to it, through
     // its own index (index.pseudo; black box, 31.0.1)
     if (compat?.computed31 && text.includes(':')) {

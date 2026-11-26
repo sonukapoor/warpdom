@@ -53,7 +53,7 @@ import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutCommen
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
 import { urlTokenEnd } from './css-values.js';
-import { compileRuleSelector, ruleSelector31, supportsSelector31 } from './selectors.js';
+import { compileRuleSelector, matchText31, ruleSelector31, supportsSelector31 } from './selectors.js';
 import { addAttributeStep } from './attributes.js';
 import {
   serializeMedium31,
@@ -806,12 +806,13 @@ function createRule(protos, record, sheet, parentRule) {
     // are serialized, #269 part F3a)
     // (from the text as written: only CSS whitespace trimmed, so a leading
     // U+00A0 stays, a type selector)
-    const selectorText = RULES31.has(protos.CSSRule)
-      ? ruleSelector31(record.raw === undefined ? record.selector : stripComments(record.raw))
-      : record.selector;
+    let written = null;
+    if (RULES31.has(protos.CSSRule)) written = record.raw === undefined ? record.selector : stripComments(record.raw);
+    const selectorText = written === null ? record.selector : ruleSelector31(written);
     if (selectorText === null) return null;
     const rule = makeRule(protos, 'CSSStyleRule', sheet, parentRule, {
       selectorText,
+      matchText: written === null ? undefined : matchText31(written, selectorText),
       rules: [],
       style: null,
       body: legacy ? record.body : undefined,
@@ -2309,9 +2310,11 @@ export const CSSOM_INTERFACES = [
         // (jsdom 31: a selector it takes, serialized; comments dropped, a
         // U+00A0 kept: #269 part F3a)
         if (RULES31.has(s.protos.CSSRule)) {
-          const text = ruleSelector31(stripComments(String(v)));
+          const written = stripComments(String(v));
+          const text = ruleSelector31(written);
           if (text !== null) {
             s.selectorText = text;
+            s.matchText = matchText31(written, text);
             cssomChanges.rev++;
           }
           return;

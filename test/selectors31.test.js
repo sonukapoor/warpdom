@@ -544,3 +544,24 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#346 review): a rule whose :heading() level is written with an exponent still applies',
+  (w) => {
+    const d = w.document;
+    const style = d.createElement('style');
+    style.textContent = 'p, :heading(123456789012345678901234) { color: red } b { color: blue }';
+    d.head.append(style);
+    d.body.innerHTML = '<p id=p></p><b id=b></b><i id=i></i>';
+    const color = (id) => w.getComputedStyle(d.getElementById(id)).color;
+    const [first, second] = style.sheet.cssRules;
+    const out = [first.selectorText, color('p')];
+    second.selectorText = 'i, :heading(1111111111111111111111111)';
+    out.push(second.selectorText, color('b'), color('i'));
+    // (the text as written back: an exponent is no level)
+    second.selectorText = 'b, :heading(1.11111e+24)';
+    out.push(second.selectorText, color('b'), color('i'));
+    return out;
+  },
+  { jsdom: 31 },
+);

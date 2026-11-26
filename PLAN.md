@@ -9139,5 +9139,13 @@ reading the URL (no host is a link, :has() is refused in :host()).
 getComputedStyle 200k reads: 66.05 to 64.95 ms (30), 70.55 to 70.5 ms
 (31). Found for F3b: jsdom 31's querySelector, querySelectorAll,
 matches and closest throw "Invalid selector" for every invalid selector.
+Sixth pass (fb14c38): a :heading() level written with an exponent
+(1.23457e+23) does not read back, so the cascade dropped the rule (p
+included; jsdom 31 styles it, and refuses that text as selectorText). The
+serializer notes such texts (lossyTexts31), and the rule keeps the text
+it was made from to match by (matchText). Cold sheets 155.85 to 154.5 ms,
+matches 38.95 to 39.15 ms (6 runs; noise). Not reproduced: a reused
+shadow-tree index missing urlRules in another document (adopting the host
+makes the index again there; probed iframe to main document).
 Next: F3b (the CSSOM details), F3c (the values), then
 NEWEST_MODELED_JSDOM to 31.
