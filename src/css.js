@@ -4491,6 +4491,24 @@ function preprocessMap(text) {
   map.push(text.length);
   return map;
 }
+// How much of slice (a preprocessed value as the parser saw it) value
+// begins with: all of it, or all but a backslash at its end that closing
+// dropped or read as U+FFFD; -1 for neither.
+function keptPrefix31(slice, value) {
+  if (value.startsWith(slice)) return slice.length;
+  return slice.endsWith('\\') && value.startsWith(slice.slice(0, -1)) ? slice.length - 1 : -1;
+}
+// A custom property's value set with setProperty, closed as the parser
+// closes its preprocessed text (url(a<NUL>b is url(a<NUL>b)), the written
+// characters kept (CR LF, CR, FF, NUL; #349 review).
+function closedWritten31(raw) {
+  const source = preprocessCss(raw);
+  if (source === raw) return closed31(raw);
+  const closed = closed31(source);
+  const kept = keptPrefix31(source, closed);
+  if (kept === -1) return closed;
+  return raw.slice(0, preprocessMap(raw)[kept]) + closed.slice(kept);
+}
 // A declaration list as jsdom 31 reads it (parse31.js), each declaration
 // then as any other: its name (custom properties keep their case, others
 // are lowercased), its value through declaredValue, the block's model
@@ -4508,9 +4526,7 @@ function parseInto31(decls, text, mode, surface, asWritten) {
       // (the written part: all of it, or up to a backslash at the end that
       // closing it dropped: a\ is a\uFFFD, "a\ is "a"; then what closing
       // it added; #349 review)
-      let kept = -1;
-      if (decl.value.startsWith(slice)) kept = slice.length;
-      else if (slice.endsWith('\\') && decl.value.startsWith(slice.slice(0, -1))) kept = slice.length - 1;
+      const kept = keptPrefix31(slice, decl.value);
       if (kept !== -1) decl.value = written.slice(map[decl.at], map[decl.at + kept]) + decl.value.slice(kept);
     }
     const name = decl.custom ? decl.name : decl.name.toLowerCase();
@@ -5837,7 +5853,8 @@ function writtenValue(name, raw, s) {
     // (a is (a))
     // (and so does a value with var(), as on main: var(--a) /*x*/; #327
     // review)
-    raw = name.startsWith('--') || hasVarReference(raw) ? closed31(raw) : value;
+    if (custom) raw = closedWritten31(raw);
+    else raw = hasVarReference(raw) ? closed31(raw) : value;
   }
   // (a value kept as written keeps its comments, before it too: #264
   // item 87)

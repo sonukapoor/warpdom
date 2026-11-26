@@ -9381,3 +9381,14 @@ of 4410, as before. Left for later with the round 2 items: jsdom 31
 declares trig and sign() simplified (cos(0deg) is calc(1)), rejects
 sin(1px) for width, and computes a number-only calc() unwrapped
 (scale(calc(-1)) is scale(-1)).
+
+Review round 4 (#349, reproduced on 31.0.1): a font-size with a math
+function resolves with em and % of the parent's size (round(1em, 1px)
+is 10px with a 10px parent, calc(10% + 1em) 11px; absoluteFontSize
+reads the rest); setProperty closes a custom value as the parser closes
+its preprocessed text, the written characters kept (url(a<NUL>b is
+url(a<NUL>b), as from cssText); url() resolution uses PlatformURL. Not
+changed: the per-read callback in absolutize31 (CodeRabbit nitpick):
+the benches show no cost (round 2), and a module-level one would need
+its state saved around absoluteLength, which re-enters for the parent's
+font size. Sweep: 58 of 4410, as before.

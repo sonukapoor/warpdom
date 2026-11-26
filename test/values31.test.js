@@ -83,6 +83,14 @@ const DECLARATIONS = [
   'background-image: image-set("a.png" calc(2x + 96dpi))',
   'transform: rotate(abs(-10deg)) translateX(1em)',
   'width: min(1em)',
+  // (font-size: em and % of the parent's size, in math too)
+  'font-size: round(1em, 1px)',
+  'font-size: mod(25px, 1em)',
+  'font-size: round(up, 1.2em, 1px)',
+  'font-size: calc(10% + 1em)',
+  'font-size: round(1rem, 1px)',
+  'font-size: calc(2 * 1em)',
+  'font-size: 150%',
 ];
 
 parity(
@@ -274,7 +282,17 @@ parity(
   (w) => {
     const d = w.document;
     const out = [];
-    for (const value of ['"a\u0000b\\', '"a\rb\\', '"a\\\r\nb\\', 'url(a\u0000b)', '"a\rb"', '"a\fb', 'a\u0000b\\']) {
+    for (const value of [
+      '"a\u0000b\\',
+      '"a\rb\\',
+      '"a\\\r\nb\\',
+      'url(a\u0000b)',
+      'url(a\u0000b',
+      '(url(a\u0000b',
+      '"a\rb"',
+      '"a\fb',
+      'a\u0000b\\',
+    ]) {
       const el = d.createElement('div');
       el.style.setProperty('--x', value);
       const set = el.style.getPropertyValue('--x');

@@ -28,6 +28,7 @@ import {
   connected,
   trackDetachedStyles,
   preprocessCss,
+  PlatformURL,
 } from './internal.js';
 import { LONGHANDS, SHORTHANDS, ALIASES } from './css-data.js';
 import {
@@ -3158,9 +3159,12 @@ const HAS_UNIT31 = /\d[a-z]/i;
 const MATH31 =
   /(?<![\w\u0080-\uffff\\-])(?:calc|min|max|clamp|round|mod|rem|abs|sign|hypot|sqrt|pow|exp|log|sin|cos|tan|asin|acos|atan|atan2)\(/gi;
 function absolutize31(element, name, value) {
-  if (name === 'font-size' || name.startsWith('--')) return value;
+  if (name.startsWith('--')) return value;
   const urls = value.includes('url(');
   if (!urls && !HAS_UNIT31.test(value)) return value;
+  // (font-size: em and % are the parent's size, so round(1em, 1px) and
+  // calc(10% + 1em) resolve; #349 review)
+  if (name === 'font-size') return fontSizeMath31(element, value);
   // (no strings nor url(): the value is one piece; kept by value where no
   // length in it needed the element, 100ms or 1turn; looked up before the
   // callback is made, #349 review)
@@ -3183,7 +3187,7 @@ function absolutize31(element, name, value) {
     if (resolution !== undefined) return `${sixDigits(n * resolution)}dppx`;
     const angle = ANGLE_DEG31[lower];
     if (angle !== undefined) return `${sixDigits(n * angle)}deg`;
-    ctx ??= new LengthContext(element, false, name === 'line-height');
+    ctx ??= new LengthContext(element, name === 'font-size', name === 'line-height');
     const px = absoluteLength(match, ctx);
     return px === null ? match : `${sixDigits(px)}px`;
   };
@@ -3214,6 +3218,22 @@ function absolutize31(element, name, value) {
   return pieces.join('');
 }
 const contextFree31 = new Map();
+const PERCENTAGE31 = /(?<![\w\u0080-\uffff#.\\-])([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)%/g;
+// A font-size with a math function: its lengths and percentages in px of
+// the parent's size, then the math resolved (absoluteFontSize reads the
+// rest: keywords, a lone length or percentage).
+function fontSizeMath31(element, value) {
+  if (!value.includes('(') || value.includes('"') || value.includes("'")) return value;
+  const ctx = new LengthContext(element, true);
+  const px = (match) => {
+    const n = absoluteLength(match, ctx);
+    return n === null ? match : `${sixDigits(n)}px`;
+  };
+  const converted = value
+    .replace(DIMENSION31, (match, number, unit, at, text) => (afterEscape31(text, at) ? match : px(match)))
+    .replace(PERCENTAGE31, (match, number) => `${sixDigits((Number(number) * ctx.em()) / 100)}px`);
+  return resolveMath31(converted, element, 'font-size', ctx);
+}
 const ONE_ARGUMENT31 = /^(?:calc|min|max|clamp)\($/i;
 // Whether text[at] continues an identifier after an escape: the escaped
 // character before it (a\+1turn), or the whitespace that ends a hex
@@ -3259,7 +3279,7 @@ function absoluteURL31(element, piece) {
     if (inner[0] === '"' || inner[0] === "'") inner = decodeEscapes(inner.slice(1, -1));
     if (inner !== '' && inner[0] !== '#' && !/^data:/i.test(inner)) {
       try {
-        out = `url(${serializeString31(new URL(inner, base).href)})`;
+        out = `url(${serializeString31(new PlatformURL(inner, base).href)})`;
       } catch {
         out = piece;
       }
