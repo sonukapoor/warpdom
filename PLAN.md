@@ -9186,3 +9186,37 @@ Load 33.6 to 33.8 ms, cold sheets 152.3 to 154.7 ms, getComputedStyle
 interleaved runs, medians, node 22.17.1); the new work is on a parse.
 Not here: CSS Nesting (the deviation listed above; a nested rule's
 :heading() written with an exponent follows from it).
+Then (black box, 31.0.1):
+- querySelector, querySelectorAll, matches, closest and
+  webkitMatchesSelector throw SyntaxError "Invalid selector" for every
+  invalid selector (invalid(): the message while grammar31 is set).
+- insertRule and deleteRule have jsdom 31's messages: "Cannot parse
+  missing rule" (nothing but whitespace and comments), "Cannot parse
+  invalid rule" ({}, ;, a selector it refuses, @charset, a bad palette
+  name), "Invalid @font-palette-values" (a --name with descriptors it
+  refuses), "Cannot parse more than a single rule" (the first rule is read
+  first: {} a{} is invalid, a{} {} more than one), "Cannot insert a rule at
+  index N in a list of M rules." (checked before parsing), "Cannot insert
+  this rule inside the parent grouping rule.", "Cannot insert this rule at
+  index N because it would violate the stylesheet's rule order.", "Cannot
+  insert @namespace when rules other than @import or @namespace already
+  exist.", "Cannot delete a rule at index N from a list of M rules.",
+  "Cannot delete @namespace when ...". Parse a rule reads <!-- and --> as
+  tokens (<!-- a{} is invalid, a{} --> more than one; parseRules' cdo).
+- @layer statements in a sheet's prefix: leading ones are kept before
+  @import and @namespace rules (@layer a; @import url(x); @namespace ...),
+  and one after them ends the prefix (@import url(x); @layer a; @import
+  url(y) drops the second). insertRule: an @import may follow @layer
+  statements, a @namespace too, and a @layer statement may go before
+  them only where nothing else is before it; the @namespace checks leave
+  @layer statements out. warpdom dropped every @import after a @layer
+  statement.
+Found for 1.x, not modeled (jsdom 20 to 30): @layer a; @import url(x)
+keeps the @import in every version (20 to 26 drop the @layer statement,
+27 to 30 keep both, and also keep an @import or @namespace after a
+@layer statement that follows one: @import; @layer a; @import has three
+rules), while warpdom's profiles drop the @import; 20 to 25 drop
+@namespace url(x); @layer a; ... down to the style rule, 26 keeps a
+@layer block. A @layer list before @import is common (Tailwind 4 writes
+@layer theme, base, components, utilities; first), so this is worth a 1.x
+fix of its own.

@@ -77,8 +77,10 @@ function decomment31(source, parser) {
   return out;
 }
 
+// (jsdom 31's engine says only Invalid selector, whatever the selector;
+// black box, 31.0.1)
 function invalid(selector) {
-  return domError(`'${selector}' is not a valid selector.`, 'SyntaxError');
+  return domError(grammar31 ? 'Invalid selector' : `'${selector}' is not a valid selector.`, 'SyntaxError');
 }
 
 // jsdom 31's cascade (compileRuleSelector's scoping, black box, 31.0.1;

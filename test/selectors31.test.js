@@ -700,3 +700,34 @@ parity(
   },
   { jsdom: 31 },
 );
+
+parity(
+  'jsdom 31 (#269 part F3b): an invalid selector throws "Invalid selector" from every query',
+  (w) => {
+    const d = w.document;
+    d.body.innerHTML = '<div id=h><p></p></div>';
+    const root = d.getElementById('h').attachShadow({ mode: 'open' });
+    const fragment = d.createDocumentFragment();
+    const p = d.querySelector('p');
+    const calls = [
+      (s) => d.querySelector(s),
+      (s) => d.querySelectorAll(s),
+      (s) => p.matches(s),
+      (s) => p.closest(s),
+      (s) => p.webkitMatchesSelector(s),
+      (s) => root.querySelector(s),
+      (s) => fragment.querySelectorAll(s),
+    ];
+    return ['', ':bogus', 'a[', 'a,,b', ':nth-child(x)', 'p/**/b'].map((s) =>
+      calls.map((call) => {
+        try {
+          call(s);
+          return 'ok';
+        } catch (e) {
+          return `${e.name}: ${e.message}`;
+        }
+      }),
+    );
+  },
+  { jsdom: 31 },
+);

@@ -177,8 +177,10 @@ function stripComments(text) {
 // `strict`, anything else is reported as { invalid: true } (insertRule's
 // garbage after a rule).
 // css31: jsdom 31's, where only CSS whitespace separates rules (a U+00A0
-// starts a selector: " .t", #269 part F3a).
-export function parseRules(text, strict = false, nested = false, css31 = false) {
+// starts a selector: " .t", #269 part F3a). cdo: whether <!-- and -->
+// between rules are skipped, as in a sheet (jsdom 31's insertRule reads
+// them as tokens: a rule's or what follows it; #269 part F3b).
+export function parseRules(text, strict = false, nested = false, css31 = false, cdo = true) {
   const records = [];
   const space = css31 ? CSS_SPACE : /[\s]/;
   let i = 0;
@@ -188,11 +190,11 @@ export function parseRules(text, strict = false, nested = false, css31 = false) 
       i = skipToken(text, i);
       continue;
     }
-    if (text.startsWith('<!--', i)) {
+    if (cdo && text.startsWith('<!--', i)) {
       i += 4;
       continue;
     }
-    if (text.startsWith('-->', i)) {
+    if (cdo && text.startsWith('-->', i)) {
       i += 3;
       continue;
     }
@@ -221,7 +223,8 @@ export function parseRules(text, strict = false, nested = false, css31 = false) 
       else if (strict) records.push({ invalid: true });
     } else if (body !== null && prelude !== '') {
       records.push({ selector: prelude, body, raw });
-    } else if (strict && prelude !== '') {
+    } else if (strict && (prelude !== '' || (css31 && body !== null))) {
+      // (jsdom 31: a block with no prelude is a rule it cannot read, {})
       records.push({ invalid: true });
     }
   }
@@ -541,6 +544,7 @@ function makeRule(protos, iface, sheet, parentRule, data) {
 const isA = (rule, iface) => Object.getPrototypeOf(rule) === rule[S].protos[iface];
 const isImport = (rule) => isA(rule, 'CSSImportRule');
 const isNamespace = (rule) => isA(rule, 'CSSNamespaceRule');
+const isLayerStatement = (rule) => isA(rule, 'CSSLayerStatementRule');
 
 // A list of rules. At the top level of a sheet @import rules must come
 // first, then @namespace rules; inside other rules both are dropped (CSS
@@ -577,9 +581,18 @@ function ruleList(protos, body, sheet, parent) {
   if (parent === null && MEDIA31.has(protos.MediaList) && tooDeep(body ?? '')) return rules;
   let prefixOnly = parent === null; // only @import and @namespace rules so far
   let namespaces = false;
-  for (const record of parseRules(body ?? '', false, nestedBlocks(protos), RULES31.has(protos.CSSRule))) {
+  // (jsdom 31: @layer statements before them too, which after them end
+  // the prefix as any other rule does; black box, 31.0.1)
+  const spec31 = RULES31.has(protos.CSSRule);
+  let layersOnly = spec31 && prefixOnly;
+  for (const record of parseRules(body ?? '', false, nestedBlocks(protos), spec31)) {
     const rule = createRule(protos, record, sheet, parent);
     if (!rule) continue;
+    if (layersOnly && isLayerStatement(rule)) {
+      rules.push(rule);
+      continue;
+    }
+    layersOnly = false;
     if (isImport(rule)) {
       if (!prefixOnly || namespaces) continue;
     } else if (isNamespace(rule)) {
@@ -1222,6 +1235,7 @@ function insertRule(owner, text, index, sheet, parentRule, nested) {
   const s = owner[S];
   const list = ruleArray(owner);
   const i = index === undefined ? 0 : index >>> 0;
+  if (RULES31.has(s.protos.CSSRule)) return insertRule31(owner, String(text), i, sheet, parentRule, nested);
   if (i > list.length)
     throw domError(`The index provided (${i}) is larger than the maximum index (${list.length}).`, 'IndexSizeError');
   const record = parseOneRule(String(text), s.protos);
@@ -1247,9 +1261,72 @@ function insertRule(owner, text, index, sheet, parentRule, nested) {
   return i;
 }
 
+// jsdom 31's (black box, 31.0.1): its messages; the index checked first;
+// the rule parsed with <!-- and --> as tokens; @layer statements may come
+// before @import and @namespace rules, though after them only where
+// nothing else is before (a sheet's leading ones).
+function insertRule31(owner, text, i, sheet, parentRule, nested) {
+  const s = owner[S];
+  const list = ruleArray(owner);
+  if (i > list.length)
+    throw domError(`Cannot insert a rule at index ${i} in a list of ${list.length} rules.`, 'IndexSizeError');
+  const records = parseRules(text, true, nestedBlocks(s.protos), true, false);
+  if (records.length === 0) throw domError('Cannot parse missing rule', 'SyntaxError');
+  // (the first rule read before what follows it: {} a{} is invalid)
+  const [record] = records;
+  const rule = record.invalid ? null : createRule(s.protos, record, sheet, parentRule);
+  if (!rule) {
+    // (a palette's name taken, its descriptors not)
+    const palette = record.at === 'font-palette-values' && record.prelude.startsWith('--');
+    throw domError(palette ? 'Invalid @font-palette-values' : 'Cannot parse invalid rule', 'SyntaxError');
+  }
+  if (records.length > 1) throw domError('Cannot parse more than a single rule', 'SyntaxError');
+  if (isImport(rule)) rule[S].inserted = true;
+  const before = list.slice(0, i);
+  const after = list.slice(i);
+  const prefix = (r) => isImport(r) || isNamespace(r);
+  if (nested && prefix(rule))
+    throw domError('Cannot insert this rule inside the parent grouping rule.', 'HierarchyRequestError');
+  let misplaced;
+  if (isImport(rule)) misplaced = before.some((r) => !isImport(r) && !isLayerStatement(r));
+  else if (isNamespace(rule))
+    misplaced = before.some((r) => !prefix(r) && !isLayerStatement(r)) || after.some(isImport);
+  else if (isLayerStatement(rule)) misplaced = after.some(prefix) && before.some((r) => !isLayerStatement(r));
+  else misplaced = after.some(prefix);
+  if (misplaced)
+    throw domError(
+      `Cannot insert this rule at index ${i} because it would violate the stylesheet's rule order.`,
+      'HierarchyRequestError',
+    );
+  if (isNamespace(rule) && list.some((r) => !prefix(r) && !isLayerStatement(r)))
+    throw domError(
+      'Cannot insert @namespace when rules other than @import or @namespace already exist.',
+      'InvalidStateError',
+    );
+  list.splice(i, 0, rule);
+  cssomChanges.rev++;
+  ruleListsChanged(s.protos);
+  return i;
+}
+
 function deleteRule(owner, index) {
   const list = ruleArray(owner);
   const i = index >>> 0;
+  if (RULES31.has(owner[S].protos.CSSRule)) {
+    if (i >= list.length)
+      throw domError(`Cannot delete a rule at index ${i} from a list of ${list.length} rules.`, 'IndexSizeError');
+    if (isNamespace(list[i]) && list.some((r) => !isImport(r) && !isNamespace(r) && !isLayerStatement(r)))
+      throw domError(
+        'Cannot delete @namespace when rules other than @import or @namespace already exist.',
+        'InvalidStateError',
+      );
+    const rule = list[i];
+    list.splice(i, 1);
+    cssomChanges.rev++;
+    ruleListsChanged(owner[S].protos);
+    detach(rule);
+    return;
+  }
   if (i >= list.length)
     throw domError(
       `The index provided (${i}) is larger than the maximum index (${list.length - 1}).`,
