@@ -419,21 +419,24 @@ const LAYER_RULES = {
   'mask-position': position,
 };
 
-function list(tokens, text) {
+// (urls: a string that starts an entry is a url(), as in image-set())
+function list(tokens, text, urls = false) {
   let out = '';
+  let entry = true;
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i];
     if (tok.t === 'comma') {
       out += ', ';
+      entry = true;
       continue;
     }
     if (out !== '' && !out.endsWith(', ')) out += ' ';
     if (tok.family !== undefined && tok.family > i) {
       out += family(tokens, i, tok.family, text);
       i = tok.family - 1;
-      continue;
-    }
-    out += component(tok, text);
+    } else if (urls && entry && tok.t === 'string') out += `url(${component(tok, text)})`;
+    else out += component(tok, text);
+    entry = false;
   }
   return out;
 }
@@ -500,9 +503,9 @@ function fn(tok, raw, text) {
   }
   if (tok.as === 'any' || tok.as === undefined) return raw;
   if (tok.name === 'drop-shadow') return `drop-shadow(${dropShadow(tok.args, text)})`;
-  // (an image-set()'s string is a url(): image-set(url("a.png") 1x))
-  if (tok.name === 'image-set')
-    return `image-set(${list(tok.args, text).replace(/(^|,\s*)("(?:[^"\\]|\\.)*")/g, '$1url($2)')})`;
+  // (an image-set()'s string is a url(): image-set(url("a.png") 1x); by
+  // token, so a comma in a url's string is no entry; #349 review)
+  if (tok.name === 'image-set') return `image-set(${list(tok.args, text, true)})`;
   if (GRADIENTS.test(tok.name)) return `${tok.name}(${gradient(tok, text)})`;
   return `${functionName(tok.name)}(${list(tok.args, text)})`;
 }

@@ -9212,3 +9212,25 @@ computed (outside url() and strings, arguments balanced: a color-mix() in
 one is resolved); names with non-ASCII characters are not read as
 dimensions (é1turn, é1em); a url()'s string escapes are decoded before it
 is resolved (a\1f b.png is a%1Fb.png).
+
+Review round 2 (#349, reproduced on 31.0.1 unless noted): a dimension
+in an identifier after an escape stays as written (animation-name:
+\31 1em, a\+1turn); a math function our px resolver leaves is simplified
+as a declared one (calc(10% + 1em + 2px) is calc(10% + 12px); round(),
+mod(), rem() resolve, so drop-shadow(round(1em, 1px) 2px 3px) reads its
+offsets as lengths); image-set() wraps a string that starts an entry,
+read by token (image-set(url("a, ") 1x, "b.png" 2x)); a custom value
+that ends with a backslash keeps its CR from style and cssText (the
+written text up to the backslash, then U+FFFD and the closers); the
+context-free cache is read before the callback is made. Not changed:
+calc(1px +(2px)) is valid in jsdom 31 too (3px). Bench (node 22.17.1,
+5 interleaved runs, medians, 85c9078 vs this): unit-heavy fresh reads
+57.8 -> 54.9 ms, keyword reads 32.6 -> 31.9, mixed 61.2 -> 60.5 (noise).
+Sweep of every property: 58 of 4410 differ, as before.
+
+Found while probing, left for later (2026-11-26): jsdom 31 clamps a
+math result to the property's range (width: calc(-1px) is 0px; padding,
+gap, flex-basis, border-radius, font-size, line-height; margin is not),
+from the grammar's [0,∞] ranges; hypot() is not resolved here
+(hypot(3em, 4px) is 30.2655px in jsdom 31); abs(-1em) is declared as
+calc(1em) here, abs(-1em) in jsdom 31.

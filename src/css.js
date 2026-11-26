@@ -4505,9 +4505,13 @@ function parseInto31(decls, text, mode, surface, asWritten) {
     if (decl.custom && decl.at !== -1 && source !== written) {
       map ??= preprocessMap(written);
       const slice = source.slice(decl.at, decl.end);
-      if (decl.value === slice) decl.value = written.slice(map[decl.at], map[decl.end]);
-      else if (decl.value.startsWith(slice))
-        decl.value = written.slice(map[decl.at], map[decl.end]) + decl.value.slice(slice.length);
+      // (the written part: all of it, or up to a backslash at the end that
+      // reads as U+FFFD, a\ is a\uFFFD; then what closing it added; #349
+      // review)
+      let kept = -1;
+      if (decl.value.startsWith(slice)) kept = slice.length;
+      else if (slice.endsWith('\\') && decl.value.startsWith(`${slice.slice(0, -1)}\uFFFD`)) kept = slice.length - 1;
+      if (kept !== -1) decl.value = written.slice(map[decl.at], map[decl.at + kept]) + decl.value.slice(kept);
     }
     const name = decl.custom ? decl.name : decl.name.toLowerCase();
     if (dropped(surface, name) || (decl.important && surface.noImportant === true)) continue;

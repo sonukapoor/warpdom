@@ -56,6 +56,26 @@ const DECLARATIONS = [
   'width: calc(1em + 2px)',
   'content: "1em"',
   '--x: 1em 1turn 100ms',
+  // (#349 review: names with escapes as written; math functions
+  // simplified after their lengths are px; image-set read by token; jsdom
+  // 31 reads +( as an operator with whitespace before it)
+  'animation-name: \\31 1em',
+  'animation-name: a\\+1turn',
+  'animation-name: a\\ 1em',
+  'transform: translateX(1em)',
+  'width: calc(10% + 1em + 2px)',
+  'width: calc(10% - 1em - 20px)',
+  'margin-left: calc(1em + 10% + 1px)',
+  'width: round(1em, 1px)',
+  'margin-left: round(1em, 3px)',
+  'width: mod(25px, 1em)',
+  'transform: translateX(round(1em, 1px))',
+  'filter: drop-shadow(round(1em, 1px) 2px 3px)',
+  'filter: drop-shadow(calc(1em + 1px) 2px)',
+  'background-image: image-set(url("a, ") 1x, "b.png" 2x)',
+  'background-image: image-set("a, \\" " 1x, "b.png" 2x)',
+  'width: calc(1px +(2px))',
+  'width: calc(1px + (2px))',
 ];
 
 parity(
@@ -219,6 +239,25 @@ parity(
       el.setAttribute('style', text);
       return w.getComputedStyle(el).getPropertyValue(name);
     });
+  },
+  { jsdom: 31 },
+);
+
+parity(
+  "jsdom 31 keeps a custom property's CR where its value ends with a backslash (#349 review)",
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const value of ['a\rb\\', 'a\r\nb\\', 'a\fb(\\']) {
+      const el = d.createElement('div');
+      el.setAttribute('style', `--x: ${value}`);
+      out.push(el.style.getPropertyValue('--x'));
+      el.style.cssText = `--y: ${value}`;
+      out.push(el.style.getPropertyValue('--y'));
+      el.style.setProperty('--z', value);
+      out.push(el.style.getPropertyValue('--z'));
+    }
+    return out.map((v) => JSON.stringify(v));
   },
   { jsdom: 31 },
 );

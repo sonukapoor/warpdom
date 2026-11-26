@@ -76,6 +76,7 @@ import { UNIVERSAL, matchValue31, registrations31 } from './property31.js';
 import { isLengthUnit } from './css-values.js';
 import { documentBaseURL } from './base-url.js';
 import { serializeString31 } from './parse31.js';
+import { canonical31 } from './declared31.js';
 import { present31 } from './color31.js';
 import { shorthand31, alias31, dropped31, composer31 } from './css31.js';
 import {
@@ -3153,13 +3154,25 @@ const ANGLE_DEG31 = { grad: 0.9, rad: 180 / Math.PI, turn: 360 };
 const DPPX31 = { x: 1, dpi: 1 / 96, dpcm: 2.54 / 96 };
 const DIMENSION31 = /(?<![\w\u0080-\uffff#.\\-])([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z]+)/gi;
 const HAS_UNIT31 = /\d[a-z]/i;
-const MATH31 = /(?<![\w\u0080-\uffff-])(?:calc|min|max|clamp)\(/gi;
+const MATH31 =
+  /(?<![\w\u0080-\uffff\\-])(?:calc|min|max|clamp|round|mod|rem|abs|sign|hypot|sqrt|pow|exp|log|sin|cos|tan|asin|acos|atan|atan2)\(/gi;
 function absolutize31(element, name, value) {
   if (name === 'font-size' || name.startsWith('--')) return value;
   const urls = value.includes('url(');
   if (!urls && !HAS_UNIT31.test(value)) return value;
+  // (no strings nor url(): the value is one piece; kept by value where no
+  // length in it needed the element, 100ms or 1turn; looked up before the
+  // callback is made, #349 review)
+  const plain = !urls && !value.includes('"') && !value.includes("'");
+  if (plain) {
+    const known = contextFree31.get(value);
+    if (known !== undefined) return known;
+  }
   let ctx = null;
-  const dimension = (match, number, unit) => {
+  const dimension = (match, number, unit, at, text) => {
+    // (in an identifier after an escape, as written: \31 1em, a\+1turn;
+    // #349 review)
+    if (afterEscape31(text, at)) return match;
     const lower = unit.toLowerCase();
     if (lower === 'px' || lower === 'deg' || lower === 's') return match;
     const n = Number(number);
@@ -3173,11 +3186,7 @@ function absolutize31(element, name, value) {
     const px = absoluteLength(match, ctx);
     return px === null ? match : `${sixDigits(px)}px`;
   };
-  // (no strings nor url(): the value is one piece; kept by value where no
-  // length in it needed the element, 100ms or 1turn)
-  if (!urls && !value.includes('"') && !value.includes("'")) {
-    const known = contextFree31.get(value);
-    if (known !== undefined) return known;
+  if (plain) {
     let out = value.replace(DIMENSION31, dimension);
     if (out.includes('(')) out = resolveMath31(out, element, name, ctx);
     if (ctx === null) {
@@ -3204,6 +3213,25 @@ function absolutize31(element, name, value) {
   return pieces.join('');
 }
 const contextFree31 = new Map();
+// Whether text[at] continues an identifier after an escape: the escaped
+// character before it (a\+1turn), or the whitespace that ends a hex
+// escape (\31 1em). Backslashes counted, so \\1em is a dimension.
+function afterEscape31(text, at) {
+  if (at < 2) return false;
+  if (escapes31(text, at - 2)) return true;
+  const c = text.charCodeAt(at - 1);
+  if (c !== 32 && c !== 9 && c !== 10) return false;
+  let k = at - 2;
+  while (k >= 0 && at - 2 - k < 6 && isHex31(text.charCodeAt(k))) k--;
+  return k < at - 2 && escapes31(text, k);
+}
+// Whether text[k] is a backslash that escapes what follows (an odd run).
+function escapes31(text, k) {
+  let slashes = 0;
+  while (k - slashes >= 0 && text.charCodeAt(k - slashes) === 92) slashes++;
+  return slashes % 2 === 1;
+}
+const isHex31 = (c) => (c >= 48 && c <= 57) || ((c | 32) >= 97 && (c | 32) <= 102);
 // Whether value has a digit followed by a letter, or a url(): one pass,
 // no allocation (getComputedStyle reads keywords most).
 function needsAbsolute31(value) {
@@ -3264,6 +3292,7 @@ function resolveMath31(text, element, name, ctx) {
       ctx ??= new LengthContext(element, false, name === 'line-height');
       const px = absoluteLength(fn, ctx);
       if (px !== null) resolved = `${sixDigits(px)}px`;
+      else resolved = simplified31(fn);
     }
     if (resolved !== null) {
       out += text.slice(from, m.index) + resolved;
@@ -3272,6 +3301,20 @@ function resolveMath31(text, element, name, ctx) {
     MATH31.lastIndex = end + 1;
   }
   return out + text.slice(from);
+}
+
+// A math function of px, deg, s and percentages simplified as a declared
+// one is (calc(10% + 10px + 2px) is calc(10% + 12px), round(10px, 3px)
+// 9px; #349 review), or null when that leaves it as it is. Read as a
+// length, an angle or a time (a property that takes each).
+const MATH_HOSTS31 = ['width', 'rotate', 'transition-duration'];
+const ONE_VALUE31 = /^calc\(([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px|deg|s))\)$/;
+function simplified31(fn) {
+  for (const host of MATH_HOSTS31) {
+    const out = canonical31(host, fn, true);
+    if (out !== null && out !== fn) return ONE_VALUE31.exec(out)?.[1] ?? out;
+  }
+  return null;
 }
 
 function computeValue(element, name, value, data) {
