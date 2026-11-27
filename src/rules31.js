@@ -33,6 +33,7 @@
 // valid one wins.
 import { parseDeclarationList31, parseValue31, serializeName31, serializeString31 as quote } from './parse31.js';
 import { decodeEscapes } from './conditions31.js';
+import { preprocessCss } from './internal.js';
 import { DARK_SYSTEM_COLORS_31 } from './colors.js';
 import {
   UNIVERSAL,
@@ -53,7 +54,9 @@ import {
 // U+FFFD), and the end closes what is open: a string left open is a
 // string, a \ at the end is nothing in a string and U+FFFD in a name
 // (#344 review).
-const ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F]|$)`;
+// (an escape takes all its hex digits, up to six: one way to read a name,
+// so a name with many escapes is not tried every way; #353 review)
+const ESCAPE = String.raw`\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F]|$)`;
 const NAME_START = String.raw`[A-Za-z_\u0080-￿]`;
 const NAME_CHAR = String.raw`[\w\u0080-￿-]`;
 const IDENT = String.raw`(?:--|-?(?:${NAME_START}|${ESCAPE}))(?:${NAME_CHAR}|${ESCAPE})*`;
@@ -458,7 +461,7 @@ const cssTrim = (text) => text.replace(CSS_SPACE, '');
 // (comments as spaces, those in strings and unquoted urls kept: url(a/*b)
 // is one url; #353 review)
 const COMMENT_OR_STRING =
-  /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|(\burl\([ \t\n\r\f]*(?!["'])(?:[^)\\]|\\[\s\S])*\)?)|\/\*[\s\S]*?(?:\*\/|$)/gi;
+  /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|(\burl\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?)|\/\*[\s\S]*?(?:\*\/|$)/gi;
 const withoutComments = (text) =>
   text.includes('/*') ? text.replace(COMMENT_OR_STRING, (m, string, url) => string ?? url ?? ' ') : text;
 
@@ -471,7 +474,8 @@ function commentEnd(text, at) {
 // When an unquoted url starts at the index (url(a[b.png), CSS Syntax 3's
 // <url-token>: its contents are no brackets, comments or separators; #353
 // review), the index of its ), or the text's last; else -1.
-const URL_START = /url\([ \t\n\r\f]*(?!["'])/iy;
+// (the quote checked before the spaces are read: url( "a)b") is quoted)
+const URL_START = /url\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*/iy;
 function unquotedUrlEnd(text, at) {
   if ((text[at] !== 'u' && text[at] !== 'U') || /[\w\u0080-\uffff\\-]/.test(text[at - 1] ?? '')) return -1;
   URL_START.lastIndex = at;
@@ -503,8 +507,8 @@ function closingAt(text, from, commas = null) {
   }
   return -1;
 }
-// Whether the text has a ! or a { } or ; outside brackets, strings and
-// comments.
+// Whether the text has a { or } outside strings and comments, or a ! or ;
+// outside brackets too (f(1; 2) is a value; #353 review).
 function topLevelStop(text) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
@@ -517,7 +521,7 @@ function topLevelStop(text) {
     else if (unquotedUrlEnd(text, i) !== -1) i = unquotedUrlEnd(text, i);
     else if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
-    else if (c === '{' || c === '}' || c === ';' || (c === '!' && depth === 0)) return true;
+    else if (c === '{' || c === '}' || ((c === ';' || c === '!') && depth === 0)) return true;
   }
   return false;
 }
@@ -559,7 +563,9 @@ function functionParameter(piece) {
   return { name, syntax, defaultValue: value };
 }
 
-export function functionPrelude31(prelude) {
+// (preprocessed first: NUL is U+FFFD in names and defaults; #353 review)
+export function functionPrelude31(written) {
+  const prelude = preprocessCss(written);
   const m = FUNCTION_NAME.exec(prelude);
   const name = m === null ? null : decodedName(m[1]);
   if (name === null) return null;

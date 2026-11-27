@@ -9519,3 +9519,14 @@ in the prelude is one token (url(a[b.png), url(a/*b.png), url(a;v.png)
 are defaults, url(a/*x*/b) kept as written); a default is a value
 (url(a b) drops the rule); name and getParameters() give names with
 their escapes read (--f\:x is --f:x), cssText writes them escaped.
+
+Review round 3 (#353, both bots; reproduced on 31.0.1, 2026-11-27): a
+quoted url with spaces after url( is quoted (url( "a)b") is a default;
+the quote is checked before the spaces are read); a ; in brackets in a
+default is part of it (f(1; 2), [1; 2]); the prelude and the block are
+read preprocessed (NUL is U+FFFD in names, result and defaults; a custom
+property's value keeps it as written, as in style rules; preprocessMap
+moved to internal.js for both). A hex escape in a name takes all its
+digits (up to six): the name pattern had many ways to read \61a, and
+a prelude of 20 such escapes with no ( took 36 s to reject; now linear
+(test: 40 escapes under 500 ms).

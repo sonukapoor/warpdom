@@ -21,6 +21,7 @@
 // parseDeclarationList31(text) returns [{ name, value, important, custom,
 // empty }] (name as read, not lowercased; value as text for the rules
 // after it).
+import { preprocessCss, preprocessMap } from './internal.js';
 
 // --- Tokens, in arrays reused from call to call (no object per token):
 // TYPE[k], START[k] and END[k] (the source span), CLOSED[k] (a string or
@@ -392,7 +393,12 @@ export function parseDeclarationList31(text, atRules, anyValue) {
 // up to its ;, or { rule: the at-rule's text }. Other rules and
 // statements are dropped. Custom properties and anyValue (a name in
 // lowercase) take {} blocks in their values.
-export function parseBlockContents31(text, anyValue) {
+export function parseBlockContents31(written, anyValue) {
+  // (read preprocessed, NUL as U+FFFD; each item's text as written, NUL
+  // kept in a custom property's value; #353 review)
+  const text = preprocessCss(written);
+  const map = text === written ? null : preprocessMap(written);
+  const raw = (from, to) => (map === null ? text.slice(from, to) : written.slice(map[from], map[to]));
   tokenize(text);
   keepRaw = false;
   const out = [];
@@ -411,12 +417,12 @@ export function parseBlockContents31(text, anyValue) {
     }
     if (end === -1) {
       end = atRuleEnd(text, k);
-      if (type === AT) out.push({ decl: null, rule: text.slice(START[k], end < count ? END[end] : text.length) });
+      if (type === AT) out.push({ decl: null, rule: raw(START[k], end < count ? END[end] : text.length) });
       k = end + 1;
       continue;
     }
     const decl = declaration(text, k, end, end === count && depth > 0 ? closers() : '');
-    if (decl !== null) out.push({ decl, text: text.slice(START[k], end < count ? START[end] : text.length) });
+    if (decl !== null) out.push({ decl, text: raw(START[k], end < count ? START[end] : text.length) });
     k = end + 1;
   }
   return out;

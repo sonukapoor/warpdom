@@ -292,6 +292,45 @@ parity(
   { jsdom: 31 },
 );
 
+// (#353 review round 3: reproduced on 31.0.1) Quoted urls with spaces
+// after url(, a ; in brackets in a default, NUL (U+FFFD in names and
+// defaults, kept as written in custom properties).
+parity(
+  "jsdom 31's @function: quoted urls, nested semicolons, NUL",
+  (w) => {
+    const d = w.document;
+    const nul = String.fromCharCode(0);
+    return [
+      '@function --f(--a: url( "a)b")) {}',
+      '@function --f(--a: url( "a)b")) { result: 1 }',
+      '@function --f(--a: url( "x/*y*/z") /* c */) {}',
+      '@function --f(--a: f(1; 2)) {}',
+      '@function --f(--a: [1; 2]) {}',
+      '@function --f(--a <length>: f(1; 2)) {}',
+      '@function --f(--a: {1; 2}) {}',
+      `@function --f() { --x: url(a${nul}b); result: 2 }`,
+      `@function --f() { result: url(a${nul}b) }`,
+      `@function --f() { --a${nul}b: 1 }`,
+      `@function --f(--a: url(a${nul}b)) {}`,
+      `@function --f(--a${nul}b) {}`,
+      `@function --f${nul}() {}`,
+      '@function --\\70() {}',
+      '@function --f\\6f o() {}',
+    ].map((text) => [text, [...sheetOf(d, text).cssRules].map(describe)]);
+  },
+  { jsdom: 31 },
+);
+
+// A name of many hex escapes and no ( is rejected in linear time (#353
+// review: each escape takes all its hex digits, one way to read it).
+test("jsdom 31's @function prelude with many escapes", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  const started = performance.now();
+  const sheet = sheetOf(d, `@function --${'\\616161'.repeat(40)} x {} p {}`);
+  assert.equal(sheet.cssRules.length, 1);
+  assert.ok(performance.now() - started < 500);
+});
+
 // A block's end at the end of the sheet, closed as parsed (#353 review;
 // jsdom 31 also reports "Could not parse CSS stylesheet" for these, which
 // warpdom does not: values measured on 31.0.1).
