@@ -6443,6 +6443,13 @@ function descriptorAccessors(names) {
       descriptors[key] = accessor;
     }
   }
+  // Their own @@iterator, CSSStyleDeclaration's (black box, jsdom 31.0.1).
+  descriptors[Symbol.iterator] = {
+    value: Array.prototype.values,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  };
   return descriptors;
 }
 

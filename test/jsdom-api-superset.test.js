@@ -18,8 +18,9 @@ import { apiSurface, differences } from './api-surface.js';
 
 const require = createRequire(import.meta.url);
 
-// One release per major from 20 to 30 (the latest of each; the newest is
-// NEWEST_MODELED_JSDOM), plus the jsdom installed when it is another one.
+// One release per major from 20 to 31 (the latest of each; the newest is
+// NEWEST_MODELED_JSDOM, or newer while its API is being added), plus the
+// jsdom installed when it is another one.
 const ALIASES = [
   'jsdom20',
   'jsdom21',
@@ -32,6 +33,7 @@ const ALIASES = [
   'jsdom28',
   'jsdom29',
   'jsdom30',
+  'jsdom31',
   'jsdom',
 ];
 // Also the elements both make HTMLUnknownElement though the standard
@@ -43,7 +45,17 @@ const HTML_TAGS = [
 // Known differences: a path pattern, optionally the difference and the
 // jsdom majors it applies to, the issue and why. An entry that matches
 // nothing in any version fails the test: remove it then.
-const KNOWN = [];
+const KNOWN = [
+  // jsdom 31's API not added yet (#269): the descriptor interfaces of
+  // @page margin boxes and @font-face, the rest of the @page descriptors,
+  // and @function rules.
+  {
+    path: /^(window\.)?CSS(MarginDescriptors|FontFaceDescriptors|Function(Rule|Descriptors|Declarations))\b/,
+    difference: /^missing$/,
+    jsdom: [31, 31],
+  },
+  { path: /^CSSPageDescriptors\.prototype\.[a-zA-Z-]+$/, difference: /^missing$/, jsdom: [31, 31] },
+];
 
 const known = (major, path, difference) =>
   KNOWN.find(

@@ -2949,6 +2949,34 @@ export const CSSOM_INTERFACES = [
       },
     },
   },
+  // CSS Pseudo-Elements 4 (CSSOM's pseudo-element object), as jsdom 31
+  // has it (black box, 31.0.1): an interface of its own (no EventTarget),
+  // with no way to get one (no Element.prototype.pseudo); its global from
+  // jsdom 31 (window-features.js LATER_GLOBALS).
+  {
+    name: 'CSSPseudoElement',
+    members: {
+      // (no nested pseudo-elements)
+      pseudo(type) {
+        state(this);
+        required(arguments.length, 1, 'CSSPseudoElement', 'pseudo');
+        void type;
+        return null;
+      },
+      get type() {
+        return state(this).pseudo;
+      },
+      get element() {
+        return state(this).element;
+      },
+      get parent() {
+        return state(this).element;
+      },
+      get selectorText() {
+        return state(this).pseudo;
+      },
+    },
+  },
 ];
 
 // The rule interfaces and CSSStyleSheet take their shape from the profile
