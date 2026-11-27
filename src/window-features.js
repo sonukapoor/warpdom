@@ -170,14 +170,18 @@ export function setupWindowData(window) {
 // Also atob, btoa and queueMicrotask, the platform's.
 function startTimer(window, repeat, handler, timeout, args) {
   const ws = state(window);
-  const timers = ws.timers ?? (ws.timers = { next: 1, handles: new Map() });
-  if (ws.timersClosed === true) return 0;
-  const id = timers.next++;
-  if (ws.discarded) return id;
+  // (the handler and timeout converted first, on a closed window too, and
+  // the window's state checked after: a conversion may close or remove it;
+  // black box, jsdom 20 and 30, #355 review)
   // (a string runs as a script where the environment runs scripts, and
   // this is the global the test sees; an exception is reported to the
   // window; black box, jsdom 20 to 30 in Vitest's VM pools, #355 review)
   const source = typeof handler === 'function' ? null : String(handler);
+  const ms = Number(timeout) || 0;
+  const timers = ws.timers ?? (ws.timers = { next: 1, handles: new Map() });
+  if (ws.timersClosed === true) return 0;
+  const id = timers.next++;
+  if (ws.discarded) return id;
   const run = () => {
     if (!repeat) timers.handles.delete(id);
     try {
@@ -187,7 +191,6 @@ function startTimer(window, repeat, handler, timeout, args) {
       reportError(window, error);
     }
   };
-  const ms = Number(timeout) || 0;
   timers.handles.set(id, { repeat, handle: repeat ? globalThis.setInterval(run, ms) : globalThis.setTimeout(run, ms) });
   return id;
 }

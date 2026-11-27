@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { jsdomVersion, jsdomProfile, installWindow, VITEST_ALWAYS_KEYS } from '../src/vitest.js';
 import { createWindow } from '../src/index.js';
+import { S } from '../src/internal.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const run = (...args) => {
@@ -334,52 +335,67 @@ test("setupVM: the timers are the window's and stop at teardown (#351)", async (
   const vmModule = await import('node:vm');
   const vmResult = await environment.setupVM();
   const context = vmResult.getVmContext();
+  const run = (source) => vmModule.runInContext(source, context);
   const ran = [];
   context.__ran = ran;
-  const ids = vmModule.runInContext(
-    `[typeof setTimeout(() => {}, 0), typeof setInterval(() => {}, 1e6), setTimeout('1', 0) > 0,
-      setTimeout(() => __ran.push('timeout'), 30), setInterval(() => __ran.push('interval'), 10)]`,
-    context,
-  );
-  assert.deepEqual([...ids.slice(0, 3)], ['number', 'number', true]);
-  // (#355 review, black box as above: a handler's this is the global, a
-  // string runs as a script, a thrown error is the window's error event)
-  const seen = vmModule.runInContext(
-    `new Promise((resolve) => {
-      const out = [];
-      addEventListener('error', (e) => { out.push(e.message); e.preventDefault(); });
-      setTimeout(function () { out.push(this === window && this === globalThis); }, 0);
-      setTimeout('globalThis.__string = 1', 0);
-      setTimeout(() => { throw new Error('boom'); }, 0);
-      setTimeout(() => resolve([...out, globalThis.__string]), 5);
-    })`,
-    context,
-  );
-  assert.deepEqual([...(await seen)], [true, 'boom', 1]);
-  // (an iframe's timers stop too, as when jsdom's window closes)
-  const frame = vmModule.runInContext(
-    `const f = document.createElement('iframe'); document.body.append(f); f.contentWindow`,
-    context,
-  );
-  frame.setTimeout(() => ran.push('frame timeout'), 20);
-  frame.setInterval(() => ran.push('frame interval'), 10);
-  vmResult.teardown();
-  assert.deepEqual(
-    [
-      ...vmModule.runInContext(
-        `[setTimeout(() => __ran.push('late'), 0), setInterval(() => __ran.push('late'), 5),
-          typeof window, typeof document.body, new CustomEvent('x').type, typeof performance.now()]`,
-        context,
-      ),
-    ],
-    [0, 0, 'object', 'object', 'x', 'number'],
-  );
-  assert.equal(
-    frame.setTimeout(() => ran.push('frame late'), 0),
-    0,
-  );
-  await new Promise((resolve) => setTimeout(resolve, 80));
-  assert.deepEqual(ran, []);
+  // (cleared at the end whatever teardown does, so a failure cannot keep
+  // the process alive)
+  const armed = [];
+  try {
+    // (#355 review, black box as above: a handler's this is the global, a
+    // string runs as a script, a thrown error is the window's error event;
+    // the handler and timeout are converted before the window's state is
+    // checked, so a handler whose conversion removes its iframe starts no
+    // timer)
+    const seen = run(
+      `new Promise((resolve) => {
+        const out = [typeof setTimeout(() => {}, 0), setTimeout('1', 0) > 0];
+        addEventListener('error', (e) => { out.push(e.message); e.preventDefault(); });
+        setTimeout(function () { out.push(this === window && this === globalThis); }, 0);
+        setTimeout('globalThis.__string = 1', 0);
+        setTimeout(() => { throw new Error('boom'); }, 0);
+        const f = document.createElement('iframe');
+        document.body.append(f);
+        const removing = { toString() { f.remove(); return '__ran.push("removed frame")'; } };
+        globalThis.__removed = f.contentWindow;
+        out.push(__removed.setInterval(removing, 1) > 0);
+        setTimeout(() => resolve([...out, globalThis.__string]), 20);
+      })`,
+    );
+    assert.deepEqual([...(await seen)], ['number', true, true, true, 'boom', 1]);
+    assert.deepEqual(ran, []);
+    // (its timer list: no interval left running)
+    assert.equal(context.__removed[S].timers.handles.size, 0);
+    // Armed, then torn down, with nothing awaited between: teardown, not a
+    // timing margin, decides whether they run. An iframe's stop too.
+    const frame = run(`const f = document.createElement('iframe'); document.body.append(f); f.contentWindow`);
+    armed.push(
+      [context, run(`setTimeout(() => __ran.push('timeout'), 30)`)],
+      [context, run(`setInterval(() => __ran.push('interval'), 10)`)],
+      [frame, frame.setTimeout(() => ran.push('frame timeout'), 20)],
+      [frame, frame.setInterval(() => ran.push('frame interval'), 10)],
+    );
+    vmResult.teardown();
+    assert.deepEqual(
+      [
+        ...run(
+          `[setTimeout(() => __ran.push('late'), 0), setInterval(() => __ran.push('late'), 5),
+            typeof window, typeof document.body, new CustomEvent('x').type, typeof performance.now()]`,
+        ),
+      ],
+      [0, 0, 'object', 'object', 'x', 'number'],
+    );
+    // (a closed window still converts the handler and timeout: id 0 after)
+    const converted = [];
+    const handler = { toString: () => (converted.push('handler'), '') };
+    const delay = { valueOf: () => (converted.push('timeout'), 0) };
+    assert.equal(frame.setTimeout(handler, delay), 0);
+    assert.deepEqual(converted, ['handler', 'timeout']);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.deepEqual(ran, []);
+  } finally {
+    for (const [owner, id] of armed) owner.clearInterval(id);
+  }
 });
 
 test('Vitest: the global CSS exists (undefined) when the jsdom profile has no CSS namespace', async () => {

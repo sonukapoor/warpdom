@@ -9499,3 +9499,13 @@ keep ignoring it), a thrown error goes to the window's error event
 the timers of the windows nested in the window (iframes: jsdom's close
 does, black box 20.0.3 and 30.1.2). The error and receiver changes hold
 for every window's timers (frames, standalone windows), as in jsdom.
+
+Review round 2 (#355): a timer's handler (to a string) and timeout (to
+a number) are converted before the window's state is checked, as jsdom
+20 and 30 do (black box: a closed window still calls toString and
+valueOf, then returns 0), so a conversion that removes its iframe starts
+no timer. Not changed: a handler with its own apply property (apply =
+null) is called through it, and the TypeError reported, as jsdom 20 and
+30 do. The adapter test arms the timers teardown must stop after the
+awaited checks, with nothing awaited before teardown, and clears them
+in a finally block.
