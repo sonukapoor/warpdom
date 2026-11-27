@@ -337,9 +337,24 @@ async function requestBodies(Request, w) {
   const blob = post(new w.Blob(['d'], { type: 'application/octet-stream' }));
   const file = post(new w.File(['f'], 'n.txt', { type: 'text/x-f' }));
   const multipart = post(form);
-  const text = (await multipart.text()).replace(/-{2,}[\w-]+/g, '--B');
+  // (boundaries as --B; Node 22.22 and 24 end the body with a CR LF, 22.17
+  // does not)
+  const text = (await multipart.text()).replace(/-{2,}[\w-]+/g, '--B').replace(/\r\n$/, '');
   // (the init's members read through its prototype too, as Node reads them)
   const proto = new Request('http://x/', Object.create({ method: 'PUT', body: new w.Blob(['p']) }));
+  // (#356 review: a function as the init, and getters that read this, as
+  // with jsdom's environment)
+  const fn = Object.assign(function init() {}, { method: 'POST', body: new w.Blob(['fn'], { type: 'a/fn' }) });
+  const fnRequest = new Request('http://x/', fn);
+  const methods = new WeakMap();
+  const bound = {
+    body: new w.Blob(['m']),
+    get method() {
+      return methods.get(this);
+    },
+  };
+  methods.set(bound, 'PATCH');
+  const boundRequest = new Request('http://x/', bound);
   return [
     Request.name,
     Request.length,
@@ -352,6 +367,10 @@ async function requestBodies(Request, w) {
     proto.method,
     await proto.text(),
     await post('s').text(),
+    fnRequest.headers.get('content-type'),
+    await fnRequest.text(),
+    boundRequest.method,
+    await boundRequest.text(),
   ];
 }
 const REQUEST_BODIES = [
@@ -368,6 +387,10 @@ const REQUEST_BODIES = [
   'PUT',
   'p',
   's',
+  'a/fn',
+  'fn',
+  'PATCH',
+  'm',
 ];
 test("Vitest: Request takes the window's Blob, File and FormData bodies (#350)", async () => {
   const { default: environment } = await import('../src/vitest.js');

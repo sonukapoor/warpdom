@@ -9488,3 +9488,16 @@ matched. Left as they are: Response and a direct fetch (as jsdom's), and
 the enumerability of the Node globals copied into the VM pools' context
 (jsdom's are enumerable, warpdom's not; Request among them: follow-up
 issue).
+
+Review round 1 (#356, both bots): a function as the init is converted
+too, and when the body is converted the init is passed through a Proxy
+that gives the converted body and reads every other member from the
+init itself (its getters keep it as this: a method read from a WeakMap
+keyed by the init; inherited members kept). The body is read once by
+the wrapper (Node reads it first anyway); jsdom's environment reads it
+four or five times (black box), so getter counts are not matched. The
+multipart test ignores the CR LF that Node 22.22 and 24 add at the end.
+fetch() itself is left as jsdom's environment leaves it: MSW 3.0.3's
+setupServer receives the right multipart and Blob bodies from fetch()
+with the fix, as with jsdom (it builds a Request from fetch's arguments),
+and timed out on main.

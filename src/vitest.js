@@ -124,10 +124,14 @@ function vitestRequest() {
   return class Request extends NodeRequest {
     constructor(...args) {
       const init = args[1];
-      if (init !== null && typeof init === 'object') {
-        const body = hostBody(init.body);
-        // (the init's other members read through it, own or inherited)
-        if (body !== init.body) args[1] = Object.create(init, { body: { value: body, enumerable: true } });
+      if (init !== null && (typeof init === 'object' || typeof init === 'function')) {
+        // (body read once, as Node reads it first; the other members read
+        // from the init itself, own or inherited, with it as this; #356
+        // review)
+        const written = init.body;
+        const body = hostBody(written);
+        if (body !== written)
+          args[1] = new Proxy(init, { get: (target, key) => (key === 'body' ? body : Reflect.get(target, key)) });
       }
       super(...args);
     }
