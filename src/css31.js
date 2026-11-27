@@ -269,7 +269,12 @@ export function expand31(name, value, raw = value) {
 export function set31(decls, name, value, important, parsing, raw = value) {
   decls.cssom31 = true;
   name = alias31(name);
-  if (!longhandsOf31(decls, name)) return put(decls, name, longhandValue(name, value), important, parsing, null);
+  // (a descriptor's value as it is: @font-face's font-size: 0 is no
+  // length; #354 review)
+  if (!longhandsOf31(decls, name)) {
+    const held = decls.descriptors?.has(name) === true ? value : longhandValue(name, value);
+    return put(decls, name, held, important, parsing, null);
+  }
   let changed = false;
   for (const [l, v, src] of expand31(name, value, raw)) changed = put(decls, l, v, important, parsing, src) || changed;
   return changed;

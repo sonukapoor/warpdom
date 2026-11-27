@@ -9569,3 +9569,13 @@ rejects src() where warpdom checks the bounds and keeps src(a).
 Load (Node 22.17, medians against G1b cf543ca): cold 35.0 -> 35.2 ms,
 first window 2.68 -> 2.47 ms (5 interleaved runs); a new window 0.2128
 -> 0.2144 ms (7 interleaved processes): within noise.
+
+Review round 1 (#354, CodeRabbit; reproduced on 31.0.1): an @ in a
+string or url in an @page block starts no rule (background-image:
+url(/img/@2x.png); size: a4 keeps both; the scanner predates this part);
+a descriptor's value is kept as it is (@font-face's font-size: 0 is no
+0px); only a var() reference is rejected ("var(--face)" and
+url("var(x).woff2") are kept). src drops each source with var(), a bad
+url or a closer of nothing (parse31.js badUrls: the declaration keeps
+them for descriptors31.js), and keeps the others (url(a b), url(c) is
+url("c")).

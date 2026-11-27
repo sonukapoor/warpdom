@@ -4,7 +4,10 @@
 // descriptors) and CSSMarginDescriptors (the margin boxes). jsdom 30 has
 // none of them as globals; warpdom's older profiles keep their @page (the
 // margins, size, page-orientation, marks and bleed).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 import { parity } from './parity.js';
+import { createWindow } from '../src/node.js';
 
 const sheetOf = (d, text) => {
   const style = d.createElement('style');
@@ -128,6 +131,14 @@ const FONT_FACE = [
   'font-size: 12px',
   'font-size: 10 20',
   'font-size: 10 10',
+  'font-size: 0',
+  'font-size: 0 0',
+  'font-family: "var(--face)"',
+  'src: url("fonts/var(x).woff2"), url("ok.woff2")',
+  'src: local("var(x)")',
+  'src: var(--x), url(a)',
+  'src: url(a), var(--x)',
+  'font-feature-settings: "var(" 1',
   'color: red',
   'font: 12px serif',
   '--x: 1',
@@ -185,6 +196,11 @@ const PAGE = [
   'margin: 1px !important; margin-top: 2px',
   'border: 1px solid red; border-top-color: blue',
   'background: blue; background-color: red',
+  // (an @ in a string or url starts no rule; #354 review)
+  'background-image: url("/img/@2x.png"); size: A4',
+  'background-image: url(/img/@2x.png); size: A4',
+  'quotes: "@a" "b"; size: A4',
+  'background-image: url("/a@b.png"); @top-left { content: "x" } size: A4',
 ];
 const MARGIN = [
   'content: counter(page)',
@@ -286,6 +302,33 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// src drops each source with a bad url or a closer of nothing, and keeps
+// the others (#354 review; measured on 31.0.1, which also reports "Could
+// not parse CSS stylesheet" for these).
+test("jsdom 31's @font-face src with bad sources", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  assert.deepEqual(
+    [
+      'src: url(a(b)), url(c)',
+      'src: url(fonts/var(x).woff2), url("ok.woff2")',
+      'src: url(a b) x, url(c)',
+      'src: url(c) ), url(d)',
+      'src: url(c), ]',
+      'src: url(a b)',
+      'font-family: x ) ; src: url(c)',
+    ].map((body) => fontFace(d, body).cssText),
+    [
+      'src: url("c");',
+      'src: url("ok.woff2");',
+      'src: url("c");',
+      'src: url("d");',
+      'src: url("c");',
+      '',
+      'src: url("c");',
+    ],
+  );
+});
 
 // The properties' rules the descriptors share: font-feature-settings'
 // values and tags, an angle's bounds in degrees, src() as a url().

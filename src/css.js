@@ -4532,7 +4532,8 @@ function parseInto31(decls, text, mode, surface, asWritten) {
   // (preprocessing changed the text: a custom property's value is taken
   // from it as written, CR LF, CR, FF and NUL kept; black box, 31.0.1)
   let map = null;
-  for (const decl of parseDeclarationList31(source)) {
+  // (@font-face's src keeps its bad urls: descriptors31.js drops each)
+  for (const decl of parseDeclarationList31(source, undefined, undefined, surface.fontFace === true ? 'src' : null)) {
     if (decl.custom && decl.at !== -1 && source !== written) {
       map ??= preprocessMap(written);
       const slice = source.slice(decl.at, decl.end);

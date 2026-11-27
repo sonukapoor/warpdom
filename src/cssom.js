@@ -773,13 +773,27 @@ function cascadeFromCssom(rule) {
 }
 
 // An @page rule's body: descriptors, and margin rules (@top-left { ... }).
+// The index of the next @ that starts a rule in a block, or -1: not one in
+// a string, comment or url (background-image: url(/img/@2x.png); #354
+// review).
+function atRuleStart(text, from) {
+  for (let i = from; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c === 64) return i;
+    if (c === 47 || c === 40 || c === 34 || c === 39 || c === 92) {
+      const next = skipToken(text, i);
+      if (next !== i) i = next - 1;
+    }
+  }
+  return -1;
+}
 function pageRule(protos, selector, body, sheet, parentRule) {
   const rule = makeRule(protos, 'CSSPageRule', sheet, parentRule, { selectorText: selector, rules: [] });
   const spec31 = RULES31.has(protos.CSSRule);
   let declarations = '';
   let i = 0;
   while (i < body.length) {
-    const at = body.indexOf('@', i);
+    const at = atRuleStart(body, i);
     if (at < 0) {
       declarations += body.slice(i);
       break;

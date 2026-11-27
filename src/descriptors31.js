@@ -16,8 +16,10 @@
 // jsdom 31 drops border-style in both (black box: border-width and
 // border-top-style are kept, border-style: solid is dropped).
 import { DESCRIPTOR_SYNTAX } from './css-grammar.js';
-import { isValidValue, hasVarFunction, tokenizeValue } from './css-values.js';
+import { isValidValue, tokenizeValue } from './css-values.js';
+import { hasVarReference } from './var-substitution.js';
 import { canonical31 } from './declared31.js';
+import { parseValue31 } from './parse31.js';
 
 const PAGE_CONTEXT = [
   'direction',
@@ -77,14 +79,19 @@ const CSS_WIDE = /^(?:initial|inherit|unset|revert|revert-layer)$/i;
 // 31 drops it. (name: in lowercase; font-stretch is read as font-width.)
 export function fontFaceValue31(name, value) {
   const text = value.trim();
-  if (text === '' || CSS_WIDE.test(text) || hasVarFunction(text) || /var\(/i.test(text)) return null;
-  if (name === 'unicode-range') return unicodeRange31(text);
+  if (text === '' || CSS_WIDE.test(text)) return null;
   const key = `@font-face ${name === 'font-stretch' ? 'font-width' : name}`;
+  // (var() as a reference: not in a string or url, "var(--a)"; #354 review)
+  if (name !== 'src' && hasVarReference(text)) return null;
+  if (name === 'unicode-range') return unicodeRange31(text);
   if (name !== 'src') return described(key, text);
-  // (each source on its own: the ones that do not parse are dropped)
+  // (each source on its own: the ones that do not parse are dropped, one
+  // with var(), a bad url or a closer of nothing too: var(--x), url(a) is
+  // url("a"))
   const sources = [];
   for (const part of topLevelParts(text)) {
-    const source = part === '' ? null : described(key, part);
+    const kept = part !== '' && !hasVarReference(part) && parseValue31(part) !== null;
+    const source = kept ? described(key, part) : null;
     if (source !== null) sources.push(source);
   }
   return sources.length === 0 ? null : sources.join(', ');
@@ -96,7 +103,7 @@ export function pageValue31(name, value) {
   const text = value.trim();
   if (text === '') return null;
   if (CSS_WIDE.test(text)) return text.toLowerCase();
-  if (hasVarFunction(text)) return text;
+  if (hasVarReference(text)) return text;
   const out = described(`@page ${name}`, text);
   // (marks: crop before cross, as the grammar lists them)
   return out !== null && name === 'marks' && out === 'cross crop' ? 'crop cross' : out;
@@ -133,18 +140,29 @@ function onePair(text) {
   return text.slice(a.s, a.e) === text.slice(b.s, b.e) ? text.slice(0, a.e) : text;
 }
 
-// The comma-separated parts of a value outside its blocks and functions,
-// each trimmed.
+// The comma-separated parts of a value outside its brackets, strings and
+// comments, each trimmed (by bracket depth, so a bad url, url(a(b)), is
+// one part).
 function topLevelParts(text) {
-  const tokens = tokenizeValue(text);
-  if (tokens === null) return [text];
   const parts = [];
   let from = 0;
-  for (const tok of tokens)
-    if (tok.t === 'comma') {
-      parts.push(text.slice(from, tok.s).trim());
-      from = tok.e;
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end === -1 ? text.length : end + 1;
+    } else if (c === '\\') i++;
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if ((c === ')' || c === ']' || c === '}') && depth > 0) depth--;
+    else if (c === ',' && depth === 0) {
+      parts.push(text.slice(from, i).trim());
+      from = i + 1;
     }
+  }
   parts.push(text.slice(from).trim());
   return parts;
 }
