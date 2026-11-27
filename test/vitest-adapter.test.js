@@ -342,6 +342,27 @@ test("setupVM: the timers are the window's and stop at teardown (#351)", async (
     context,
   );
   assert.deepEqual([...ids.slice(0, 3)], ['number', 'number', true]);
+  // (#355 review, black box as above: a handler's this is the global, a
+  // string runs as a script, a thrown error is the window's error event)
+  const seen = vmModule.runInContext(
+    `new Promise((resolve) => {
+      const out = [];
+      addEventListener('error', (e) => { out.push(e.message); e.preventDefault(); });
+      setTimeout(function () { out.push(this === window && this === globalThis); }, 0);
+      setTimeout('globalThis.__string = 1', 0);
+      setTimeout(() => { throw new Error('boom'); }, 0);
+      setTimeout(() => resolve([...out, globalThis.__string]), 5);
+    })`,
+    context,
+  );
+  assert.deepEqual([...(await seen)], [true, 'boom', 1]);
+  // (an iframe's timers stop too, as when jsdom's window closes)
+  const frame = vmModule.runInContext(
+    `const f = document.createElement('iframe'); document.body.append(f); f.contentWindow`,
+    context,
+  );
+  frame.setTimeout(() => ran.push('frame timeout'), 20);
+  frame.setInterval(() => ran.push('frame interval'), 10);
   vmResult.teardown();
   assert.deepEqual(
     [
@@ -352,6 +373,10 @@ test("setupVM: the timers are the window's and stop at teardown (#351)", async (
       ),
     ],
     [0, 0, 'object', 'object', 'x', 'number'],
+  );
+  assert.equal(
+    frame.setTimeout(() => ran.push('frame late'), 0),
+    0,
   );
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.deepEqual(ran, []);

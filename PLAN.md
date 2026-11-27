@@ -9489,3 +9489,13 @@ file reads them as with jsdom. Jest already did both (numericTimers,
 CLOSED_WINDOW_UNDEFINED, as jest-environment-jsdom). Load and the hot
 members are untouched (timers in the VM pools only go through the
 window's bookkeeping, one Map entry per pending timer).
+
+Review round 1 (#355, both bots; reproduced in Vitest's VM pool with its
+jsdom environment): a timer handler's this is the global the test sees
+(the VM context's, globalProxy), a string handler runs as a script of
+the window where the environment runs scripts (runScript; the others
+keep ignoring it), a thrown error goes to the window's error event
+(reportError, as frame and microtask callbacks), and teardown also stops
+the timers of the windows nested in the window (iframes: jsdom's close
+does, black box 20.0.3 and 30.1.2). The error and receiver changes hold
+for every window's timers (frames, standalone windows), as in jsdom.

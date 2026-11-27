@@ -174,10 +174,18 @@ function startTimer(window, repeat, handler, timeout, args) {
   if (ws.timersClosed === true) return 0;
   const id = timers.next++;
   if (ws.discarded) return id;
-  const callback = typeof handler === 'function' ? handler : () => {};
+  // (a string runs as a script where the environment runs scripts, and
+  // this is the global the test sees; an exception is reported to the
+  // window; black box, jsdom 20 to 30 in Vitest's VM pools, #355 review)
+  const source = typeof handler === 'function' ? null : String(handler);
   const run = () => {
     if (!repeat) timers.handles.delete(id);
-    callback.apply(window, args);
+    try {
+      if (source === null) handler.apply(ws.globalProxy ?? window, args);
+      else if (ws.runScript) ws.runScript(source);
+    } catch (error) {
+      reportError(window, error);
+    }
   };
   const ms = Number(timeout) || 0;
   timers.handles.set(id, { repeat, handle: repeat ? globalThis.setInterval(run, ms) : globalThis.setTimeout(run, ms) });
@@ -200,10 +208,14 @@ export function clearWindowTimers(window) {
 
 // A test environment's teardown in Vitest's VM pools (#351), as closing
 // jsdom's window: pending timers never run, and later ones get id 0 and
-// never run (black box, jsdom 20 to 30).
+// never run, in nested windows too (black box, jsdom 20 to 30).
 export function closeWindowTimers(window) {
-  window[S].timersClosed = true;
+  const ws = window[S];
+  ws.timersClosed = true;
   clearWindowTimers(window);
+  // (and those of the windows nested in it: an iframe's; #355 review)
+  for (const frames of [ws.childFrames, ws.shadowFrames])
+    if (frames) for (const child of frames) closeWindowTimers(child);
 }
 
 const timerMembers = {
