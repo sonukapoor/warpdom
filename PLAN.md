@@ -9463,3 +9463,29 @@ Review round 4 (#352, Copilot's summary): part's getter throws for a
 Text node (it has state, but is no element); the receiver test reads
 each result's type, so a token list made for one no longer passes as a
 TypeError from serializing it.
+
+## 2026-11-27: Vitest VM pools: the window's timers, a closed window at teardown (branch fix/351-vm-timers, #351)
+
+Reported by an outside user (#351): in the VM pools (vmThreads,
+vmForks), callbacks that run after a file's teardown threw
+ReferenceError (window, performance, CustomEvent), and Vitest exited 1.
+The animation frame part was fixed on main by #255 (unreleased after
+0.1.14). The timer part reproduced on main: 12 to 13 errors from a
+library's setTimeout left over from the test.
+
+Black box, Vitest 5 with its jsdom environment (jsdom 30), VM pools:
+setTimeout is the window's (numeric ids, a string handler accepted, not
+Node's Timeout objects); after teardown the context keeps the window's
+members (window, document, CustomEvent and performance work), pending
+timers never run, and new ones get id 0 and never run.
+
+Decision: in the VM pools the timers are the window's (the host's are
+kept in forks and threads, as Vitest's jsdom environment keeps Node's
+there), and teardown stops them for good (closeWindowTimers: pending
+ones cleared, later ones 0). Teardown no longer deletes the window's
+members from the context: each file has its own context, dropped after
+it, so there is nothing to restore, and code still running after the
+file reads them as with jsdom. Jest already did both (numericTimers,
+CLOSED_WINDOW_UNDEFINED, as jest-environment-jsdom). Load and the hot
+members are untouched (timers in the VM pools only go through the
+window's bookkeeping, one Map entry per pending timer).

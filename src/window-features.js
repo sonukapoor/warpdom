@@ -171,6 +171,7 @@ export function setupWindowData(window) {
 function startTimer(window, repeat, handler, timeout, args) {
   const ws = state(window);
   const timers = ws.timers ?? (ws.timers = { next: 1, handles: new Map() });
+  if (ws.timersClosed === true) return 0;
   const id = timers.next++;
   if (ws.discarded) return id;
   const callback = typeof handler === 'function' ? handler : () => {};
@@ -195,6 +196,14 @@ export function clearWindowTimers(window) {
   const timers = window[S].timers;
   if (!timers) return;
   for (const id of [...timers.handles.keys()]) stopTimer(window, id);
+}
+
+// A test environment's teardown in Vitest's VM pools (#351), as closing
+// jsdom's window: pending timers never run, and later ones get id 0 and
+// never run (black box, jsdom 20 to 30).
+export function closeWindowTimers(window) {
+  window[S].timersClosed = true;
+  clearWindowTimers(window);
 }
 
 const timerMembers = {

@@ -322,6 +322,41 @@ test("Vitest keeps Node's AbortController and AbortSignal, as its jsdom environm
   }
 });
 
+// Vitest's VM pools (#351): the timers are the window's, as with Vitest's
+// jsdom environment there (black box, jsdom 20 to 30 with Vitest 5:
+// numeric ids, a string handler accepted), and teardown stops them as
+// closing jsdom's window does: pending callbacks never run, and later
+// timers get id 0 and never run. The window's other members stay, so code
+// still running after the file reads them as in jsdom (window, document,
+// CustomEvent, performance).
+test("setupVM: the timers are the window's and stop at teardown (#351)", async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmModule = await import('node:vm');
+  const vmResult = await environment.setupVM();
+  const context = vmResult.getVmContext();
+  const ran = [];
+  context.__ran = ran;
+  const ids = vmModule.runInContext(
+    `[typeof setTimeout(() => {}, 0), typeof setInterval(() => {}, 1e6), setTimeout('1', 0) > 0,
+      setTimeout(() => __ran.push('timeout'), 30), setInterval(() => __ran.push('interval'), 10)]`,
+    context,
+  );
+  assert.deepEqual([...ids.slice(0, 3)], ['number', 'number', true]);
+  vmResult.teardown();
+  assert.deepEqual(
+    [
+      ...vmModule.runInContext(
+        `[setTimeout(() => __ran.push('late'), 0), setInterval(() => __ran.push('late'), 5),
+          typeof window, typeof document.body, new CustomEvent('x').type, typeof performance.now()]`,
+        context,
+      ),
+    ],
+    [0, 0, 'object', 'object', 'x', 'number'],
+  );
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(ran, []);
+});
+
 test('Vitest: the global CSS exists (undefined) when the jsdom profile has no CSS namespace', async () => {
   const { default: environment } = await import('../src/vitest.js');
   const global = {};
