@@ -322,6 +322,79 @@ test("Vitest keeps Node's AbortController and AbortSignal, as its jsdom environm
   }
 });
 
+// Vitest's jsdom environment's Request (#350; black box, Vitest 5, jsdom
+// 26 and 30, every pool): a subclass of Node's whose constructor takes
+// the window's Blob, File and FormData bodies (as Node's, of their bytes
+// and type; a FormData's Blob and File entries are sent as "blob", their
+// names left out). Its length is 0, Node's Requests are its instances;
+// the other bodies are Node's to read.
+async function requestBodies(Request, w) {
+  const form = new w.FormData();
+  form.append('a', '1');
+  form.append('b', new w.Blob(['x'], { type: 'text/x-b' }), 'b.bin');
+  form.append('c', new w.File(['y'], 'c.txt', { type: 'text/x-c' }));
+  const post = (body, init = {}) => new Request('http://x/', { method: 'POST', body, ...init });
+  const blob = post(new w.Blob(['d'], { type: 'application/octet-stream' }));
+  const file = post(new w.File(['f'], 'n.txt', { type: 'text/x-f' }));
+  const multipart = post(form);
+  const text = (await multipart.text()).replace(/-{2,}[\w-]+/g, '--B');
+  // (the init's members read through its prototype too, as Node reads them)
+  const proto = new Request('http://x/', Object.create({ method: 'PUT', body: new w.Blob(['p']) }));
+  return [
+    Request.name,
+    Request.length,
+    blob.headers.get('content-type'),
+    await blob.text(),
+    file.headers.get('content-type'),
+    await file.text(),
+    multipart.headers.get('content-type').split(';')[0],
+    text,
+    proto.method,
+    await proto.text(),
+    await post('s').text(),
+  ];
+}
+const REQUEST_BODIES = [
+  'Request',
+  0,
+  'application/octet-stream',
+  'd',
+  'text/x-f',
+  'f',
+  'multipart/form-data',
+  '--B\r\nContent-Disposition: form-data; name="a"\r\n\r\n1\r\n' +
+    '--B\r\nContent-Disposition: form-data; name="b"; filename="blob"\r\nContent-Type: text/x-b\r\n\r\nx\r\n' +
+    '--B\r\nContent-Disposition: form-data; name="c"; filename="blob"\r\nContent-Type: text/x-c\r\n\r\ny\r\n--B',
+  'PUT',
+  'p',
+  's',
+];
+test("Vitest: Request takes the window's Blob, File and FormData bodies (#350)", async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const global = {};
+  const result = environment.setup(global);
+  try {
+    assert.deepEqual(await requestBodies(global.Request, global), REQUEST_BODIES);
+    assert.equal(new global.Request('http://x/') instanceof Request, true);
+    // (Node's Requests are its instances too, a clone's: its own @@hasInstance)
+    assert.equal(new Request('http://x/') instanceof global.Request, true);
+    assert.equal(new global.Request('http://x/').clone() instanceof global.Request, true);
+    assert.equal({} instanceof global.Request, false);
+  } finally {
+    result.teardown();
+  }
+  assert.equal('Request' in global, false);
+  const vmModule = await import('node:vm');
+  const vmResult = await environment.setupVM();
+  try {
+    const context = vmResult.getVmContext();
+    const [Vm, w] = vmModule.runInContext('[Request, window]', context);
+    assert.deepEqual(await requestBodies(Vm, w), REQUEST_BODIES);
+  } finally {
+    vmResult.teardown();
+  }
+});
+
 test('Vitest: the global CSS exists (undefined) when the jsdom profile has no CSS namespace', async () => {
   const { default: environment } = await import('../src/vitest.js');
   const global = {};

@@ -9463,3 +9463,28 @@ Review round 4 (#352, Copilot's summary): part's getter throws for a
 Text node (it has state, but is no element); the receiver test reads
 each result's type, so a token list made for one no longer passes as a
 TypeError from serializing it.
+
+## 2026-11-27: Vitest: Request takes the window's Blob, File and FormData bodies (branch fix/350-request-bodies, #350)
+
+Reported by an outside user (#350): under warpdom's Vitest environment
+a window FormData or Blob given to Request (and to fetch through MSW,
+which builds a Request from fetch's arguments) was not one to Node's
+fetch: sent as text/plain "[object FormData]", or (jsdom 30 profiles,
+whose Blob has no stream()) a TypeError; jsdom 26 passed.
+
+Black box, Vitest 5 with its jsdom environment (jsdom 26 and 30, forks
+and vmThreads): the global Request is a subclass of Node's (length 0,
+an own @@hasInstance that takes Node's Requests, so a clone is one)
+whose constructor converts the window's Blob, File and FormData bodies
+to Node's: a Blob or File with its bytes and type; a FormData with its
+strings, and its Blob and File entries as Blobs (sent as filename
+"blob", the names lost). Response and fetch are Node's: a window Blob
+given to them directly fails there too (TypeError, or a FormData that
+never resolves).
+
+Decision: the same (vitestRequest, beside vitestURL, one per window and
+reset per file as URL is: installClasses); the "blob" filenames
+matched. Left as they are: Response and a direct fetch (as jsdom's), and
+the enumerability of the Node globals copied into the VM pools' context
+(jsdom's are enumerable, warpdom's not; Request among them: follow-up
+issue).
