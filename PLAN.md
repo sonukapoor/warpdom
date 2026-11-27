@@ -9504,3 +9504,53 @@ Load (Node 22.17, medians against main 79101cf): bench:load cold
 34.7 -> 34.9 ms, first window 2.57 -> 2.56 ms (5 interleaved runs); a new
 window 0.2097 -> 0.2092 ms (7 interleaved processes, 2,000 windows each
 after warm-up; bench:load's next-window figure swung with machine load).
+
+## 2026-11-27: jsdom 31, part G2: the descriptor interfaces (branch feat/269-jsdom31-descriptors, #269)
+
+jsdom 31's CSSFontFaceDescriptors, CSSMarginDescriptors and the rest of
+CSSPageDescriptors (black box, 31.0.1), in the 31 profile only
+(descriptors31.js; css.js setDescriptorsMode, a surface per kind as
+CSSPositionTryDescriptors has). With them the superset test's KNOWN list
+is empty: warpdom has all of jsdom 31's API.
+- @font-face's style is a CSSFontFaceDescriptors: CSS Fonts 4's
+  descriptors (@webref/css, now generated as DESCRIPTOR_SYNTAX with the
+  types they reach; Fonts 4's prose <font-src-list> as <font-src>#) and
+  font-stretch (as font-width). Each value by its descriptor's grammar
+  (css-values.js, '@font-face src' keys, jsdom 31's grammar only), in
+  canonical form (declared31.js). No !important, CSS-wide keyword, var()
+  or custom property. src: each source on its own, the ones that do not
+  parse dropped. A range of the same value twice is one (normal normal).
+  unicode-range: U+START-END in uppercase hex, a single code point
+  START-START, an end of 0 left out; the start at most 10FFFF, the end
+  never checked; written in decimal digits only on both sides (U+41-42),
+  the end is compared as a decimal number (jsdom 31 drops U+10-11).
+- @page's style (CSSPageDescriptors) is a style rule's declarations of
+  CSS Paged Media 3's page-context properties (Appendix A) and the @page
+  descriptors (size, marks, bleed, page-orientation, page-margin-safety,
+  by their grammars: size is not the width and height shorthand there).
+  A name is kept by the name as written: border-width is, border-style
+  and text-decoration-color are not, and only the shorthands the block
+  takes are written (border: 1px solid red; border-top-color: blue is
+  border-width, the four border-*-style longhands, border-color and
+  border-image's longhands). Custom properties, !important, CSS-wide
+  keywords and var() are kept. page-margin-safety takes auto too.
+- The margin boxes' style is a CSSMarginDescriptors: the page context's
+  properties, the margin contexts' (content, overflow, unicode-bidi,
+  vertical-align, z-index) and page-margin-safety.
+- jsdom 31 drops border-style in both lists, which the spec's table has
+  (black box): followed.
+- Older profiles keep their @font-face (CSSStyleProperties) and @page
+  (the margins, size, page-orientation, marks, bleed; PLAN.md's earlier
+  "@page rules are grouping rules" decision).
+Fixed for jsdom 31's properties too (the same rules): font-feature-
+settings' value 1 and on are left out and off is 0 ("liga" 1 is
+"liga"), a tag is four characters from U+20 to U+7E; an angle's bounds
+are in degrees (oblique 0.5turn is dropped, 100grad kept); src("a") is
+url("a"), src(a) invalid.
+Not modeled: size: calc(1px) in @page, whose cssText jsdom 31 cannot
+read (it throws a TypeError). Found, not changed (warpdom's jsdom 30
+profile, before this part): jsdom 30 keeps any oblique angle (91deg) and
+rejects src() where warpdom checks the bounds and keeps src(a).
+Load (Node 22.17, medians against G1b cf543ca): cold 35.0 -> 35.2 ms,
+first window 2.68 -> 2.47 ms (5 interleaved runs); a new window 0.2128
+-> 0.2144 ms (7 interleaved processes): within noise.

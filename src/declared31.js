@@ -407,6 +407,8 @@ const VALUE_RULES = {
   'grid-area': gridLines,
   'grid-row': gridLines,
   'grid-column': gridLines,
+  'font-feature-settings': featureSettings,
+  '@font-face font-feature-settings': featureSettings,
 };
 
 const LAYER_RULES = {
@@ -420,6 +422,23 @@ const LAYER_RULES = {
 };
 
 // (urls: a string that starts an entry is a url(), as in image-set())
+// font-feature-settings: a feature's value 1 or on is left out, off is 0
+// ("liga" 1 is "liga", "liga" off "liga" 0); a tag is four characters
+// from U+20 to U+7E (CSS Fonts 4's <opentype-tag>, in prose; black box,
+// 31.0.1).
+const TAG = /^[\x20-\x7e]{4}$/;
+function featureSettings(tokens, text) {
+  const kept = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.t === 'string' && !TAG.test(stringValue(tok, text.slice(tok.s, tok.e)))) rejected = true;
+    const after = tokens[i - 1]?.t === 'string';
+    if (after && ((tok.t === 'number' && tok.v === 1) || (tok.t === 'ident' && tok.v === 'on'))) continue;
+    kept.push(after && tok.t === 'ident' && tok.v === 'off' ? { ...tok, t: 'number', v: 0, as: 'integer' } : tok);
+  }
+  return list(kept, text);
+}
+
 function list(tokens, text, urls = false) {
   let out = '';
   let entry = true;
@@ -502,6 +521,8 @@ function fn(tok, raw, text) {
     return raw;
   }
   if (tok.as === 'any' || tok.as === undefined) return raw;
+  // (src("a") is url("a"))
+  if (tok.as === 'url' && tok.name === 'src') return `url(${component(tok.args[0], text)})`;
   if (tok.name === 'drop-shadow') return `drop-shadow(${dropShadow(tok.args, text)})`;
   // (an image-set()'s string is a url(): image-set(url("a.png") 1x); by
   // token, so a comma in a url's string is no entry; #349 review)

@@ -27,7 +27,7 @@ import {
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
 import { setupWindow, profileCompat, setupWindowData } from './window-features.js';
-import { setValidationMode, setPositionTryMode, setFunctionDescriptorsMode } from './css.js';
+import { setValidationMode, setPositionTryMode, setFunctionDescriptorsMode, setDescriptorsMode } from './css.js';
 import { namedPropertiesObject, namedAccessPrototype } from './named-access.js';
 import './document-named.js';
 import { xpathException } from './dom-parsing.js';
@@ -59,6 +59,14 @@ const BY_NAME = new Map(); // interface name -> definition
 // Object.defineProperties (about 30% for CSSStyleProperties).
 const DESCRIPTORS = new Map(); // interface name (and variant) -> { keys, descriptors }
 // variant: a key for interfaces whose members depend on the profile
+// jsdom 31's descriptor interfaces, by the kind of block (css.js
+// setDescriptorsMode).
+const DESCRIPTOR_KINDS = {
+  __proto__: null,
+  CSSFontFaceDescriptors: 'fontFace',
+  CSSPageDescriptors: 'page',
+  CSSMarginDescriptors: 'margin',
+};
 // (iface.variant: CSSStyleProperties' accessors, the event handlers of a
 // jsdom version), else null. An interface built from members changes its
 // descriptors for a variant with iface.adjust(descriptors, variant), once
@@ -451,6 +459,8 @@ export function createWindow(options = {}) {
       setPositionTryMode(proto, cssMode(window[S].compat), window[S].compat);
     else if (name === 'CSSFunctionDescriptors')
       setFunctionDescriptorsMode(proto, cssMode(window[S].compat), window[S].compat);
+    else if (DESCRIPTOR_KINDS[name] !== undefined && window[S].compat.jsdom >= 31)
+      setDescriptorsMode(proto, cssMode(window[S].compat), window[S].compat, DESCRIPTOR_KINDS[name]);
     Object.defineProperty(protos, name, { value: proto, writable: true, enumerable: true, configurable: true });
     // A constructor property locked before its first read stays the accessor
     // (lockedRead, in its getter).

@@ -14,7 +14,7 @@
 // CSS-wide keywords and values with var() are always valid, and math
 // functions (calc(), min(), ...) are accepted wherever a number, length,
 // percentage, angle, time or resolution is, without checking their insides.
-import { PROPERTY_SYNTAX, TYPE_SYNTAX } from './css-grammar.js';
+import { PROPERTY_SYNTAX, TYPE_SYNTAX, DESCRIPTOR_SYNTAX } from './css-grammar.js';
 import { resolveColor } from './colors.js';
 import { mathType } from './calc31.js';
 import { ALIASES } from './css-data.js';
@@ -639,6 +639,10 @@ const MATH = new Set([
 
 const inRange = (v, range) => !range || (v >= range[0] && v <= range[1]);
 const isMath = (tok) => tok.t === 'function' && MATH.has(tok.name);
+// An angle in degrees: jsdom 31 checks an angle's bounds so (oblique
+// 0.5turn is 180deg, out of [-90deg,90deg]; 100grad is 90deg).
+const TO_DEGREES = { __proto__: null, deg: (v) => v, grad: (v) => (v * 9) / 10, rad: (v) => (v * 180) / Math.PI };
+const degrees = (tok) => (TO_DEGREES[tok.unit.toLowerCase()] ?? ((v) => v * 360))(tok.v);
 
 // Numeric types: a token of the type, a unitless zero where lengths allow
 // it, or a math function.
@@ -655,7 +659,11 @@ const PRIMITIVES = {
   integer: (tok, range) => isMath(tok) || (tok.t === 'number' && tok.int && inRange(tok.v, range)),
   percentage: (tok, range) => isMath(tok) || (tok.t === 'percentage' && inRange(tok.v, range)),
   length: numeric(LENGTH_UNITS, true),
-  angle: numeric(ANGLE_UNITS, true),
+  angle: (tok, range) => {
+    if (isMath(tok)) return true;
+    if (tok.t === 'dimension') return ANGLE_UNITS.has(tok.unit) && inRange(grammar31 ? degrees(tok) : tok.v, range);
+    return tok.t === 'number' && tok.v === 0;
+  },
   time: numeric(TIME_UNITS, false),
   frequency: numeric(FREQUENCY_UNITS, false),
   resolution: numeric(RESOLUTION_UNITS, false),
@@ -720,6 +728,20 @@ const TYPE_FIXES = {
 // ellipsis, not auto (line-clamp: 2 ellipsis; line-clamp: auto 2 is
 // invalid, black box 31.0.1).
 const PROPERTY_FIXES = { __proto__: null, 'block-ellipsis': 'no-ellipsis | ellipsis | <string>' };
+// The @font-face and @page descriptors' grammars, by '@font-face src'
+// (descriptors31.js; jsdom 31 only). src is read one <font-src> at a
+// time: its list drops the ones that do not parse; page-margin-safety
+// takes auto too (black box, 31.0.1).
+const DESCRIPTOR_FIXES = {
+  __proto__: null,
+  '@font-face src': '<font-src>',
+  '@page page-margin-safety': 'auto | none | clamp | add',
+};
+function descriptorSyntax(key) {
+  if (key[0] !== '@') return undefined;
+  const space = key.indexOf(' ');
+  return DESCRIPTOR_FIXES[key] ?? DESCRIPTOR_SYNTAX[key.slice(0, space)]?.[key.slice(space + 1)];
+}
 
 function typeNode(name) {
   if (compiled.has(name)) return compiled.get(name);
@@ -743,7 +765,7 @@ function propertyNode(name) {
   if (propertyNodes.has(name)) return propertyNodes.get(name);
   propertyNodes.set(name, null);
   let node = null;
-  const syntax = (grammar31 ? PROPERTY_FIXES[name] : undefined) ?? PROPERTY_SYNTAX[name];
+  const syntax = (grammar31 ? (PROPERTY_FIXES[name] ?? descriptorSyntax(name)) : undefined) ?? PROPERTY_SYNTAX[name];
   if (syntax) {
     try {
       node = parseGrammar(syntax);
@@ -839,6 +861,14 @@ function matchNode(node, tokens, pos) {
   }
 }
 
+// A url: url(a), url("a") or src("a"), in jsdom 31 src() of one string
+// only (src(a) is invalid; black box, 31.0.1).
+const isUrl = (tok) =>
+  tok.t === 'url' ||
+  (tok.t === 'function' &&
+    (tok.name === 'url' ||
+      (tok.name === 'src' && (!grammar31 || (tok.args.length === 1 && tok.args[0].t === 'string')))));
+
 function matchType(node, tokens, pos) {
   const tok = tokens[pos];
   if (!tok) return [];
@@ -850,8 +880,7 @@ function matchType(node, tokens, pos) {
     // Colors: parsed by the color module (the same as computed values).
     return colorToken(tok, name) ? [pos + 1] : [];
   }
-  if (name === 'url')
-    return tok.t === 'url' || (tok.t === 'function' && (tok.name === 'url' || tok.name === 'src')) ? [pos + 1] : [];
+  if (name === 'url') return isUrl(tok) ? [pos + 1] : [];
   if (name === 'declaration-value' || name === 'any-value') return anyRest(tokens, pos);
   // A generic family keyword alone (serif) is <generic-family>; the same
   // word as a one-identifier <family-name> would be a second reading of

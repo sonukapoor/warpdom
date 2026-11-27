@@ -775,6 +775,7 @@ function cascadeFromCssom(rule) {
 // An @page rule's body: descriptors, and margin rules (@top-left { ... }).
 function pageRule(protos, selector, body, sheet, parentRule) {
   const rule = makeRule(protos, 'CSSPageRule', sheet, parentRule, { selectorText: selector, rules: [] });
+  const spec31 = RULES31.has(protos.CSSRule);
   let declarations = '';
   let i = 0;
   while (i < body.length) {
@@ -796,15 +797,21 @@ function pageRule(protos, selector, body, sheet, parentRule) {
       .toLowerCase();
     if (MARGINS.has(name)) {
       const margin = makeRule(protos, 'CSSMarginRule', sheet, rule, { name });
-      margin[S].style = declarationBlock(protos.CSSStyleProperties, body.slice(end + 1, close), margin);
+      // (jsdom 31: CSSMarginDescriptors, css.js setDescriptorsMode)
+      const proto = spec31 ? protos.CSSMarginDescriptors : protos.CSSStyleProperties;
+      margin[S].style = declarationBlock(proto, body.slice(end + 1, close), margin);
       rule[S].rules.push(margin);
     }
     i = close + 1;
   }
-  rule[S].style = declarationBlock(protos.CSSPageDescriptors, declarations, rule, 'page', 'sheet', {
-    lastWins: legacyRules(protos),
-    styleProto: protos.CSSStyleProperties,
-  });
+  // (jsdom 31: a style rule's declarations of the page context's
+  // properties and the page descriptors, css.js setDescriptorsMode)
+  rule[S].style = spec31
+    ? declarationBlock(protos.CSSPageDescriptors, declarations, rule)
+    : declarationBlock(protos.CSSPageDescriptors, declarations, rule, 'page', 'sheet', {
+        lastWins: legacyRules(protos),
+        styleProto: protos.CSSStyleProperties,
+      });
   return rule;
 }
 
@@ -1043,7 +1050,9 @@ function createRule(protos, record, sheet, parentRule) {
     return importRule(protos, prelude, sheet, parentRule);
   } else if (at === 'font-face' && body !== null) {
     rule = makeRule(protos, 'CSSFontFaceRule', sheet, parentRule, {});
-    rule[S].style = declarationBlock(protos.CSSStyleProperties, body, rule);
+    // (jsdom 31: CSSFontFaceDescriptors, css.js setDescriptorsMode)
+    const proto = RULES31.has(protos.CSSRule) ? protos.CSSFontFaceDescriptors : protos.CSSStyleProperties;
+    rule[S].style = declarationBlock(proto, body, rule);
     return rule;
   } else if (at === 'page' && body !== null) {
     const selector = pageSelector(prelude);

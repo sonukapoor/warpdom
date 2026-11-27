@@ -37,6 +37,11 @@ import { hasVarReference } from './var-substitution.js';
 import { EXPANDERS31, COMPOSERS31 } from './shorthands31.js';
 
 export const shorthand31 = (name) => shorthandsTable()[name];
+// A shorthand's longhands, or undefined: in a block of jsdom 31's
+// descriptors (decls.descriptors, css.js setDescriptorsMode) a descriptor
+// is one (@page's size, not the width and height shorthand).
+export const longhandsOf31 = (decls, name) =>
+  decls.descriptors?.has(name) === true ? undefined : shorthandsTable()[name];
 export const alias31 = (name) => (data ?? load()).aliases[name] ?? name;
 
 // The shorthands with a longhand, in preferred order: more longhands first,
@@ -264,7 +269,7 @@ export function expand31(name, value, raw = value) {
 export function set31(decls, name, value, important, parsing, raw = value) {
   decls.cssom31 = true;
   name = alias31(name);
-  if (!shorthandsTable()[name]) return put(decls, name, longhandValue(name, value), important, parsing, null);
+  if (!longhandsOf31(decls, name)) return put(decls, name, longhandValue(name, value), important, parsing, null);
   let changed = false;
   for (const [l, v, src] of expand31(name, value, raw)) changed = put(decls, l, v, important, parsing, src) || changed;
   return changed;
@@ -294,7 +299,7 @@ function put(decls, name, value, important, parsing, src) {
 export function remove31(decls, name) {
   name = alias31(name);
   const previous = value31(decls, name);
-  const longhands = shorthandsTable()[name];
+  const longhands = longhandsOf31(decls, name);
   if (longhands) for (const l of longhands) decls.delete(l);
   else decls.delete(name);
   return previous;
@@ -302,7 +307,7 @@ export function remove31(decls, name) {
 
 export function priority31(decls, name) {
   name = alias31(name);
-  const longhands = shorthandsTable()[name];
+  const longhands = longhandsOf31(decls, name);
   if (!longhands) return decls.get(name)?.important ? 'important' : '';
   for (const l of longhands) if (!decls.get(l)?.important) return '';
   return 'important';
@@ -314,7 +319,7 @@ export const value31 = (decls, name) =>
   name.startsWith('--') ? heldValue31(decls, name) : present31(heldValue31(decls, name));
 function heldValue31(decls, name) {
   name = alias31(name);
-  const longhands = shorthandsTable()[name];
+  const longhands = longhandsOf31(decls, name);
   if (!longhands) return decls.get(name)?.value ?? '';
   const entries = [];
   for (const l of longhands) {
@@ -621,6 +626,9 @@ export function serialize31(decls) {
     let written = false;
     if (shorthands !== undefined)
       for (const shorthand of shorthands) {
+        // (only a shorthand the block takes: a page's border-width, not
+        // its border-style; decls.drops, css.js setDescriptorsMode)
+        if (decls.drops?.has(shorthand) === true) continue;
         const entries = [];
         for (const l of shorthandsTable()[shorthand]) {
           const e = decls.get(l);
