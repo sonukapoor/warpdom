@@ -454,6 +454,9 @@ function cloneNode(node, deep, doc) {
     // A clone of a script that already started is already started (from
     // jsdom 31 that includes parsed ones: html.js).
     if (s.script === 'started') copy[S].script = 'started';
+    // (a copied async attribute clears the clone's force async flag, as
+    // adding it would: HTMLScriptElement below; #352 review)
+    if (s.tag === 'script' && s.ns === HTML_NS && s.attrs.has('async')) copy[S].forceAsync = false;
     if (s.attrNS) copy[S].attrNS = new Map(s.attrNS);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
     if (s.attrs.size !== 0) namedAttributesSet(copy[S], doc);

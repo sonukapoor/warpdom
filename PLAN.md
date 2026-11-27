@@ -9442,3 +9442,11 @@ HTML one does; reportError() throws a TypeError for a receiver that is
 not a window (a document or an element, which the shared reporter maps
 to their window). The superset test's KNOWN entries are one per
 follow-up (G1b, G2), so each fails once its part lands.
+
+Review round 2 (#352): a clone of a script with an async attribute
+(cloneNode, importNode) has its force async flag cleared, as adding the
+attribute would (reproduced on 31.0.1: removing it then gives false);
+the XML fragment parser restores the flag it found when done (a nested
+parse from a custom element's constructor). Not changed: the
+descriptors' own @@iterator in older profiles: jsdom 30's @page style's
+prototype (CSSStyleDeclaration there) has its own too.

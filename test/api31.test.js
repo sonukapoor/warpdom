@@ -75,6 +75,13 @@ parity(
       parsed('<script></script>').async,
       parsed('<script async></script>').async,
       parsed('<script></script>').cloneNode().async,
+      ...(() => {
+        const script = created();
+        script.setAttribute('async', '');
+        const clone = script.cloneNode();
+        const imported = d.implementation.createHTMLDocument().importNode(script);
+        return [clone, imported].map((copy) => after(copy, (s) => s.removeAttribute('async')));
+      })(),
       template.content.firstChild.async,
       d.createRange().createContextualFragment('<script></script>').firstChild.async,
       new w.DOMParser().parseFromString('<script></script>', 'text/html').querySelector('script').async,

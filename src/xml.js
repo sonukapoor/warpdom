@@ -389,6 +389,9 @@ export function parseXMLFragment(doc, context, markup) {
   let start = `<w xmlns="${escapeAttr(defaultNs)}"`;
   for (const [prefix, ns] of scope) if (ns !== '') start += ` xmlns:${prefix}="${escapeAttr(ns)}"`;
   const fragment = w.createFragment(doc);
+  // (restored after: a custom element's constructor may parse another
+  // fragment while this one is built; #352 review)
+  const outer = parsingFragment;
   try {
     const tree = parseXml(`${start}>${scalarValues(String(markup))}</w>`, new Map());
     const root = tree.children.find((n) => n.type === 'element');
@@ -399,7 +402,7 @@ export function parseXMLFragment(doc, context, markup) {
     if (!(error instanceof XmlSyntaxError) && typeof error?.pos !== 'number') throw error;
     throw domError(`Failed to parse the markup as XML: ${errorMessage(error)}`, 'SyntaxError');
   } finally {
-    parsingFragment = false;
+    parsingFragment = outer;
   }
   return fragment;
 }
