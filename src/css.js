@@ -6729,8 +6729,10 @@ export function setFunctionDescriptorsMode(proto, mode, compat) {
 // (empty: one space, as a custom property's: result: ;)
 const resultValue31 = (value) => initialText31(value, false) || ' ';
 // result set (setProperty, the accessor): one declaration's value, not
-// !important.
+// !important, as a custom property's is given (parseValue31).
 function resultSet31(raw) {
+  // (no ; outside blocks: result: 1; is none; #353 review)
+  if (parseValue31(raw, true) === null) return INVALID;
   const items = parseBlockContents31(`result:${raw}`, 'result');
   if (items.length !== 1 || items[0].decl === null || items[0].decl.important) return INVALID;
   return resultValue31(items[0].decl.value);

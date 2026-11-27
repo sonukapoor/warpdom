@@ -470,14 +470,31 @@ export function independent31(syntax, text) {
 // Whether a value (written by initialText31) matches the syntax, its
 // relative lengths too (an @function parameter's default; black box,
 // 31.0.1: 1em is a <length>, var() is none).
-// (relative lengths read as px: calc(1em + 1px) is a length)
-const RELATIVE_LENGTH = /(\d(?:[eE][+-]?\d+)?)([A-Za-z]+)/g;
+// (relative lengths read as px: calc(1em + 1px) is a length; dimension
+// tokens only, an identifier as written: item1em; #353 review)
 const ANY_LENGTH = {
   ...INDEPENDENT,
   length: () => 0,
-  resolve: (text) =>
-    text.replace(RELATIVE_LENGTH, (m, digits, unit) => (DEPENDENT_UNITS.has(unit.toLowerCase()) ? `${digits}px` : m)),
+  resolve: (text) => {
+    const tokens = tokenizeValue(text);
+    if (tokens === null) return text;
+    const at = [];
+    relativeLengths(tokens, at);
+    let out = text;
+    for (let i = at.length - 1; i >= 0; i--)
+      out = `${out.slice(0, at[i].e - at[i].unit.length)}px${out.slice(at[i].e)}`;
+    return out;
+  },
 };
+// The dimension tokens of relative lengths, in order, in functions and
+// blocks too.
+function relativeLengths(tokens, at) {
+  for (const tok of tokens) {
+    if (tok.t === 'dimension' && DEPENDENT_UNITS.has(tok.unit.toLowerCase())) at.push(tok);
+    else if (tok.t === 'function') relativeLengths(tok.args, at);
+    else if (tok.t === 'block') relativeLengths(tok.items, at);
+  }
+}
 export function matchesSyntax31(syntax, text) {
   return !hasVarReference(text) && matchValue31(syntax, ANY_LENGTH.resolve(text), ANY_LENGTH) !== null;
 }

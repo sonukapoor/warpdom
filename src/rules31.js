@@ -455,8 +455,14 @@ const withoutComments = (text) =>
   text.includes('/*') ? text.replace(COMMENT_OR_STRING, (m, string) => string ?? ' ') : text;
 
 const CLOSER = { '(': ')', '[': ']', '{': '}' };
+// The index of a comment's last character (its /), or the text's last.
+function commentEnd(text, at) {
+  const end = text.indexOf('*/', at + 2);
+  return end === -1 ? text.length - 1 : end + 1;
+}
 // The index of the character that closes the bracket before from, or -1;
-// commas: the indices of the commas outside brackets and strings, filled.
+// commas: the indices of the commas outside brackets, strings and
+// comments, filled (#353 review: --f(/* , */ --a) has one parameter).
 function closingAt(text, from, commas = null) {
   const stack = [];
   for (let i = from; i < text.length; i++) {
@@ -464,7 +470,8 @@ function closingAt(text, from, commas = null) {
     if (c === '"' || c === "'") {
       i++;
       while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
-    } else if (c === '\\') i++;
+    } else if (c === '/' && text[i + 1] === '*') i = commentEnd(text, i);
+    else if (c === '\\') i++;
     else if (c === '(' || c === '[' || c === '{') stack.push(CLOSER[c]);
     else if (c === ')' || c === ']' || c === '}') {
       if (stack.length === 0) return c === ')' ? i : -1;
@@ -473,7 +480,8 @@ function closingAt(text, from, commas = null) {
   }
   return -1;
 }
-// Whether the text has a ! or a { } or ; outside brackets and strings.
+// Whether the text has a ! or a { } or ; outside brackets, strings and
+// comments.
 function topLevelStop(text) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
@@ -481,7 +489,8 @@ function topLevelStop(text) {
     if (c === '"' || c === "'") {
       i++;
       while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
-    } else if (c === '\\') i++;
+    } else if (c === '/' && text[i + 1] === '*') i = commentEnd(text, i);
+    else if (c === '\\') i++;
     else if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
     else if (c === '{' || c === '}' || c === ';' || (c === '!' && depth === 0)) return true;
