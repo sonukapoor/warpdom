@@ -282,6 +282,10 @@ function buildElement(w, doc, n, parentScope, inTemplate) {
   // A parsed style attribute is parsed as set (escaped url()s, #163).
   if (attrs.get('style')?.includes('\\')) styleAttributeChanged(element, undefined);
   if (es.attrs.size !== 0) namedAttributesSet(es, doc);
+  // A script's "force async" flag (interfaces.js HTMLScriptElement): the
+  // fragment parser clears it, a document's parser only for an async
+  // attribute (black box, 31.0.1).
+  if (html && local === 'script' && (parsingFragment || attrs.has('async'))) es.forceAsync = false;
   if (!inTemplate && hooks.ce !== null) hooks.ce.created(element);
   // A template's children go into its contents (HTML, the XML parser).
   if (html && local === 'template') build(w, doc, templateContentOf(element), n.children, scope, true);
@@ -333,6 +337,10 @@ export function parseXMLDocument(doc, text) {
 export function parseXMLInto(doc, text) {
   const w = internals(doc);
   const source = scalarValues(String(text));
+  // (a document's parse is no fragment's, also when it starts while one
+  // is built: DOMParser in a custom element's constructor; #352 review)
+  const outer = parsingFragment;
+  parsingFragment = false;
   try {
     const tree = parseXml(source, declaredEntities(internalSubset(source)));
     build(w, doc, doc, tree.children, new Map([['xml', XML_NS]]), false);
@@ -345,6 +353,8 @@ export function parseXMLInto(doc, text) {
     insert(root, w.createText(`${position(source, error.pos)}: ${message}`, doc), null);
     insert(doc, root, null);
     return false;
+  } finally {
+    parsingFragment = outer;
   }
   return true;
 }
@@ -375,6 +385,8 @@ const escapeAttr = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').repla
 // of an element with the context element's namespace bindings. Returns a
 // DocumentFragment owned by doc; markup that is not well-formed throws a
 // SyntaxError.
+// Whether build() is making a fragment's nodes (parseXMLFragment).
+let parsingFragment = false;
 export function parseXMLFragment(doc, context, markup) {
   const w = internals(doc);
   const cs = context[S];
@@ -383,14 +395,20 @@ export function parseXMLFragment(doc, context, markup) {
   let start = `<w xmlns="${escapeAttr(defaultNs)}"`;
   for (const [prefix, ns] of scope) if (ns !== '') start += ` xmlns:${prefix}="${escapeAttr(ns)}"`;
   const fragment = w.createFragment(doc);
+  // (restored after: a custom element's constructor may parse another
+  // fragment while this one is built; #352 review)
+  const outer = parsingFragment;
   try {
     const tree = parseXml(`${start}>${scalarValues(String(markup))}</w>`, new Map());
     const root = tree.children.find((n) => n.type === 'element');
     const rootScope = new Map([['xml', XML_NS], ['', defaultNs], ...[...scope].filter(([, ns]) => ns !== '')]);
+    parsingFragment = true;
     build(w, doc, fragment, root.children, rootScope, false);
   } catch (error) {
     if (!(error instanceof XmlSyntaxError) && typeof error?.pos !== 'number') throw error;
     throw domError(`Failed to parse the markup as XML: ${errorMessage(error)}`, 'SyntaxError');
+  } finally {
+    parsingFragment = outer;
   }
   return fragment;
 }

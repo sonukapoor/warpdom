@@ -433,6 +433,16 @@ export const WINDOW_MEMBERS = {
   ...timerMembers,
   ...noOps,
   ...barMembers,
+  // From jsdom 31 (interfaces.js, Window's compat): reports the value as an
+  // uncaught exception, as a listener's (events.js).
+  reportError(error) {
+    // (a window only: events.js reportError takes a node's window; #352
+    // review)
+    if (state(this).isWindow !== true)
+      throw new TypeError("'reportError' called on an object that is not a valid instance of Window.");
+    if (arguments.length === 0) tooFewArguments('Window', 'reportError', 1, 0);
+    reportError(this, error);
+  },
   get origin() {
     return windowOrigin(this);
   },
@@ -1767,6 +1777,7 @@ const LATER_GLOBALS = [
       'CSSPositionTryDescriptors',
       'CSSViewTransitionRule',
       'CSSPropertyRule',
+      'CSSPseudoElement',
     ],
   ],
   [null, ['FormDataEvent', 'TimeRanges', 'ToggleEvent']],

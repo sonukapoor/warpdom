@@ -119,6 +119,7 @@ import {
 import {
   ATTRIBUTE_INTERFACES,
   writeAttribute,
+  addAttributeStep,
   attrName,
   attrNode,
   namedNodeMap,
@@ -453,6 +454,9 @@ function cloneNode(node, deep, doc) {
     // A clone of a script that already started is already started (from
     // jsdom 31 that includes parsed ones: html.js).
     if (s.script === 'started') copy[S].script = 'started';
+    // (a copied async attribute clears the clone's force async flag, as
+    // adding it would: HTMLScriptElement below; #352 review)
+    if (s.tag === 'script' && s.ns === HTML_NS && s.attrs.has('async')) copy[S].forceAsync = false;
     if (s.attrNS) copy[S].attrNS = new Map(s.attrNS);
     if (s.handlers || hasOnAttribute(s.attrs)) eventHandlerAttributesAdded(copy);
     if (s.attrs.size !== 0) namedAttributesSet(copy[S], doc);
@@ -713,6 +717,9 @@ export const INTERFACES = [
     // The event handlers of the profile's jsdom (event-handlers.js).
     variant: handlerVariant,
     adjust: (descriptors, variant) => adjustHandlers(descriptors, variant, true),
+    compat(proto, compat) {
+      if (!(compat.jsdom >= 31)) delete proto.reportError;
+    },
   },
   {
     name: 'Node',
@@ -1567,7 +1574,8 @@ export const INTERFACES = [
     // (Element Plus's table-v2 tests read those attributes).
     // Left out of the cached descriptors of a 'no-aria' variant; the
     // braille ones before jsdom 31 ('no-braille', compat.ariaBraille;
-    // black box, 30.1.3 and 31.0.1).
+    // black box, 30.1.3 and 31.0.1). Both variants are profiles before
+    // jsdom 31, which also have no part (black box, 30.1.3 and 31.0.1).
     variant(compat) {
       if (!compat.ariaMixin) return 'no-aria';
       return compat.ariaBraille ? null : 'no-braille';
@@ -1575,6 +1583,7 @@ export const INTERFACES = [
     adjust(descriptors, variant) {
       if (variant === 'no-braille') for (const key of BRAILLE_MEMBERS) delete descriptors[key];
       else for (const key of Object.keys(descriptors)) if (ARIA_MEMBER.test(key)) delete descriptors[key];
+      delete descriptors.part;
     },
     members: mix(parentNode, childNode, elementSiblings, ELEMENT_LAYOUT, {
       [Symbol.unscopables]: {
@@ -1684,6 +1693,16 @@ export const INTERFACES = [
       },
       set classList(v) {
         this.classList.value = v;
+      },
+      // The part attribute's tokens (CSS Shadow Parts), from jsdom 31.
+      // (an element only: a Text node has state too; #352 review)
+      get part() {
+        if (state(this).type !== ELEMENT_NODE) throw new TypeError('Illegal invocation');
+        return tokenList(this, 'part', writeAttribute);
+      },
+      set part(v) {
+        state(this);
+        this.part.value = v;
       },
       // The first attribute with the name, in any namespace, else a new one in none.
       setAttribute(name, value) {
@@ -2108,7 +2127,38 @@ const childTextMembers = {
   },
 };
 INTERFACES.push({ name: 'HTMLTitleElement', parent: 'HTMLElement', members: childTextMembers });
-INTERFACES.push({ name: 'HTMLScriptElement', parent: 'HTMLElement', members: childTextMembers });
+// async (HTML 4.12.1), from jsdom 31: true while the script's "force
+// async" flag is set, which a parsed script (but for DOMParser's, and a
+// document's parsed without scripting: html.js) and adding the async
+// attribute clear (state.forceAsync false); else whether the attribute is
+// there (black box, 31.0.1).
+// (an HTML script only: another element is no HTMLScriptElement; #352 review)
+function scriptState(element) {
+  const s = state(element);
+  if (s.tag !== 'script' || s.ns !== HTML_NS) throw new TypeError('Illegal invocation');
+  return s;
+}
+addAttributeStep('async', (element, old, value) => {
+  const es = element[S];
+  if (value !== undefined && es.tag === 'script' && es.ns === HTML_NS) es.forceAsync = false;
+});
+INTERFACES.push({
+  name: 'HTMLScriptElement',
+  parent: 'HTMLElement',
+  members: mix(childTextMembers, {
+    get async() {
+      const s = scriptState(this);
+      return s.forceAsync !== false || s.attrs.has('async');
+    },
+    set async(v) {
+      scriptState(this).forceAsync = false;
+      writeAttribute(this, 'async', v ? '' : undefined);
+    },
+  }),
+  compat(proto, compat) {
+    if (!(compat.jsdom >= 31)) delete proto.async;
+  },
+});
 // datalist options and map areas: live collections of descendants.
 const descendantCollection = (el, key, tag) => {
   const s = state(el);

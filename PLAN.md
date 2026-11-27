@@ -9399,3 +9399,67 @@ with a 10px parent); font-size math is now read in absoluteFontSize,
 one loop with no callbacks (CodeRabbit nitpick). Left for later: jsdom
 31 declares round(55%, 1%) as written, this as calc(55%) (the computed
 5.5px is the same).
+
+## 2026-11-27: jsdom 31, part G1: the new members (branch feat/269-jsdom31-apis, #269)
+
+Decision (2026-11-27): NEWEST_MODELED_JSDOM stays 30.1.3 until warpdom
+has jsdom 31's API. The superset test (test/jsdom-api-superset.test.js,
+run on Node 22.23 since jsdom 31 needs ^22.22.2) found 327 paths of
+jsdom 31.0.1 that the 31 profile lacked. Split into G1 (this branch: the
+members tests are likely to touch), G1b (@function rules:
+CSSFunctionRule, CSSFunctionDescriptors, CSSFunctionDeclarations, which
+need parsing), G2 (the descriptor interfaces: CSSMarginDescriptors,
+CSSFontFaceDescriptors, the rest of CSSPageDescriptors, from
+@webref/idl), then the NEWEST_MODELED_JSDOM change.
+
+G1, black box on 31.0.1, the 31 profile only:
+- window.reportError(e): an error event at the window, as a listener's
+  exception (events.js reportError); TypeError without an argument.
+- HTMLScriptElement async with the "force async" flag: true for a
+  created script; cleared by the parser (innerHTML, templates,
+  createContextualFragment, the document) but not for DOMParser or a
+  document parsed without scripting, and by adding the async attribute
+  (in no namespace) or setting async.
+- Element part: a DOMTokenList of the part attribute (in Element's
+  cached variants: both pre-31 variants drop it, no per-window cost).
+- CSSPseudoElement: an interface of its own (no EventTarget, as in
+  jsdom), with no way to get one; its global from 31.
+- CSSPageDescriptors and CSSPositionTryDescriptors have their own
+  @@iterator (CSSStyleDeclaration's function).
+The superset test now includes jsdom31, with KNOWN entries for the G1b
+and G2 paths (they fail once those land and match nothing).
+
+Not changed (all profiles, also with jsdom 30): an exception's error
+event message for a non-Error is "uncaught exception: 'str'" in jsdom
+30 and 31, its value in warpdom ("str"); and jsdom gives the error's
+source position (lineno, colno), warpdom 0.
+
+Review round 1 (#352, reproduced on 31.0.1): a parsed script with an
+async attribute has its force async flag cleared by every parser
+(DOMParser's too: removing the attribute makes async false), and the
+XML fragment parser (innerHTML of an XHTML element) clears it as the
+HTML one does; reportError() throws a TypeError for a receiver that is
+not a window (a document or an element, which the shared reporter maps
+to their window). The superset test's KNOWN entries are one per
+follow-up (G1b, G2), so each fails once its part lands.
+
+Review round 2 (#352): a clone of a script with an async attribute
+(cloneNode, importNode) has its force async flag cleared, as adding the
+attribute would (reproduced on 31.0.1: removing it then gives false);
+the XML fragment parser restores the flag it found when done (a nested
+parse from a custom element's constructor). Not changed: the
+descriptors' own @@iterator in older profiles: jsdom 30's @page style's
+prototype (CSSStyleDeclaration there) has its own too.
+
+Review round 3 (#352, Copilot's summary; reproduced on 31.0.1): part's
+setter, script async and CSSPseudoElement's members throw a TypeError
+on another object (a div, a Text node, a plain object), as jsdom's do;
+the XML document parser clears the fragment flag while it runs (a
+DOMParser call from a custom element's constructor during a fragment
+parse). Left as before: reflected attributes (defer on a div) do not
+check their interface, a difference older than this branch.
+
+Review round 4 (#352, Copilot's summary): part's getter throws for a
+Text node (it has state, but is no element); the receiver test reads
+each result's type, so a token list made for one no longer passes as a
+TypeError from serializing it.
