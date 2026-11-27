@@ -176,6 +176,8 @@ function startTimer(window, repeat, handler, timeout, args) {
   // (a string runs as a script where the environment runs scripts, and
   // this is the global the test sees; an exception is reported to the
   // window; black box, jsdom 20 to 30 in Vitest's VM pools, #355 review)
+  // (a Symbol is no DOMString: a TypeError, as jsdom 20 and 30 throw)
+  if (typeof handler === 'symbol') throw new TypeError('Value is a symbol, which cannot be converted to a string.');
   const source = typeof handler === 'function' ? null : String(handler);
   const ms = Number(timeout) || 0;
   const timers = ws.timers ?? (ws.timers = { next: 1, handles: new Map() });

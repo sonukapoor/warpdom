@@ -391,6 +391,14 @@ test("setupVM: the timers are the window's and stop at teardown (#351)", async (
     const delay = { valueOf: () => (converted.push('timeout'), 0) };
     assert.equal(frame.setTimeout(handler, delay), 0);
     assert.deepEqual(converted, ['handler', 'timeout']);
+    // (a Symbol handler throws, open or closed, as jsdom 20 and 30's)
+    const symbol = (owner) =>
+      assert.throws(() => owner.setTimeout(Symbol('h'), 0), {
+        name: 'TypeError',
+        message: 'Value is a symbol, which cannot be converted to a string.',
+      });
+    symbol(frame);
+    symbol(createWindow());
     await new Promise((resolve) => setTimeout(resolve, 80));
     assert.deepEqual(ran, []);
   } finally {

@@ -9509,3 +9509,6 @@ null) is called through it, and the TypeError reported, as jsdom 20 and
 30 do. The adapter test arms the timers teardown must stop after the
 awaited checks, with nothing awaited before teardown, and clears them
 in a finally block.
+Review round 3 (#355, Copilot): a Symbol handler throws a TypeError
+("Value is a symbol, which cannot be converted to a string."), open or
+closed window, as jsdom 20 and 30 do (black box).
