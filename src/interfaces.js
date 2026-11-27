@@ -1700,6 +1700,7 @@ export const INTERFACES = [
         return tokenList(this, 'part', writeAttribute);
       },
       set part(v) {
+        state(this);
         this.part.value = v;
       },
       // The first attribute with the name, in any namespace, else a new one in none.
@@ -2130,6 +2131,12 @@ INTERFACES.push({ name: 'HTMLTitleElement', parent: 'HTMLElement', members: chil
 // document's parsed without scripting: html.js) and adding the async
 // attribute clear (state.forceAsync false); else whether the attribute is
 // there (black box, 31.0.1).
+// (an HTML script only: another element is no HTMLScriptElement; #352 review)
+function scriptState(element) {
+  const s = state(element);
+  if (s.tag !== 'script' || s.ns !== HTML_NS) throw new TypeError('Illegal invocation');
+  return s;
+}
 addAttributeStep('async', (element, old, value) => {
   const es = element[S];
   if (value !== undefined && es.tag === 'script' && es.ns === HTML_NS) es.forceAsync = false;
@@ -2139,11 +2146,11 @@ INTERFACES.push({
   parent: 'HTMLElement',
   members: mix(childTextMembers, {
     get async() {
-      const s = state(this);
+      const s = scriptState(this);
       return s.forceAsync !== false || s.attrs.has('async');
     },
     set async(v) {
-      state(this).forceAsync = false;
+      scriptState(this).forceAsync = false;
       writeAttribute(this, 'async', v ? '' : undefined);
     },
   }),

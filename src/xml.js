@@ -337,6 +337,10 @@ export function parseXMLDocument(doc, text) {
 export function parseXMLInto(doc, text) {
   const w = internals(doc);
   const source = scalarValues(String(text));
+  // (a document's parse is no fragment's, also when it starts while one
+  // is built: DOMParser in a custom element's constructor; #352 review)
+  const outer = parsingFragment;
+  parsingFragment = false;
   try {
     const tree = parseXml(source, declaredEntities(internalSubset(source)));
     build(w, doc, doc, tree.children, new Map([['xml', XML_NS]]), false);
@@ -349,6 +353,8 @@ export function parseXMLInto(doc, text) {
     insert(root, w.createText(`${position(source, error.pos)}: ${message}`, doc), null);
     insert(doc, root, null);
     return false;
+  } finally {
+    parsingFragment = outer;
   }
   return true;
 }

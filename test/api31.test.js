@@ -162,3 +162,23 @@ parity("jsdom 30 has none of jsdom 31's new members", (w) => [
   'part' in w.document.createElement('p'),
   'CSSPseudoElement' in w,
 ]);
+
+parity(
+  "jsdom 31's new members on another object",
+  (w) => {
+    const d = w.document;
+    const text = d.createTextNode('x');
+    const div = d.createElement('div');
+    const accessor = (name, member) => Object.getOwnPropertyDescriptor(w[name].prototype, member);
+    return [
+      () => accessor('Element', 'part').get.call(text),
+      () => accessor('Element', 'part').set.call({ part: {} }, 'x'),
+      () => accessor('HTMLScriptElement', 'async').get.call(div),
+      () => accessor('HTMLScriptElement', 'async').set.call(div, true),
+      () => accessor('CSSPseudoElement', 'type').get.call(div),
+      () => accessor('CSSPseudoElement', 'element').get.call(div),
+      () => w.CSSPseudoElement.prototype.pseudo.call(div, 'x'),
+    ].map(attempt);
+  },
+  { jsdom: 31 },
+);

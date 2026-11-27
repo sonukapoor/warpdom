@@ -2958,26 +2958,34 @@ export const CSSOM_INTERFACES = [
     members: {
       // (no nested pseudo-elements)
       pseudo(type) {
-        state(this);
+        pseudoState(this);
         required(arguments.length, 1, 'CSSPseudoElement', 'pseudo');
         void type;
         return null;
       },
       get type() {
-        return state(this).pseudo;
+        return pseudoState(this).pseudo;
       },
       get element() {
-        return state(this).element;
+        return pseudoState(this).element;
       },
       get parent() {
-        return state(this).element;
+        return pseudoState(this).element;
       },
       get selectorText() {
-        return state(this).pseudo;
+        return pseudoState(this).pseudo;
       },
     },
   },
 ];
+
+// A CSSPseudoElement's state; nothing makes one yet, so any receiver is
+// an illegal one (#352 review).
+function pseudoState(object) {
+  const s = state(object);
+  if (s.pseudoElement !== true) throw new TypeError('Illegal invocation');
+  return s;
+}
 
 // The rule interfaces and CSSStyleSheet take their shape from the profile
 // (compat.cssomShape): descriptors per variant, built once per module load.

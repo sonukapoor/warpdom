@@ -9450,3 +9450,11 @@ the XML fragment parser restores the flag it found when done (a nested
 parse from a custom element's constructor). Not changed: the
 descriptors' own @@iterator in older profiles: jsdom 30's @page style's
 prototype (CSSStyleDeclaration there) has its own too.
+
+Review round 3 (#352, Copilot's summary; reproduced on 31.0.1): part's
+setter, script async and CSSPseudoElement's members throw a TypeError
+on another object (a div, a Text node, a plain object), as jsdom's do;
+the XML document parser clears the fragment flag while it runs (a
+DOMParser call from a custom element's constructor during a fragment
+parse). Left as before: reflected attributes (defer on a div) do not
+check their interface, a difference older than this branch.
