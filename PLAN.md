@@ -9514,6 +9514,12 @@ prelude's commas and brackets in comments are not its own (--f(/* , */
 --a) has one parameter). Not changed: insertRule() of a style rule and
 declarations (p {} --x: 1) already throws a SyntaxError, as in jsdom.
 
+Review round 2 (#353, Copilot; reproduced on 31.0.1): an unquoted url
+in the prelude is one token (url(a[b.png), url(a/*b.png), url(a;v.png)
+are defaults, url(a/*x*/b) kept as written); a default is a value
+(url(a b) drops the rule); name and getParameters() give names with
+their escapes read (--f\:x is --f:x), cssText writes them escaped.
+
 ## 2026-11-27: jsdom 31, part G2: the descriptor interfaces (branch feat/269-jsdom31-descriptors, #269)
 
 jsdom 31's CSSFontFaceDescriptors, CSSMarginDescriptors and the rest of
