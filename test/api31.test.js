@@ -28,6 +28,8 @@ parity(
       attempt(() => reportError(new Error('detached'))),
       attempt(() => w.reportError()),
       attempt(() => w.reportError.call({}, 1)),
+      attempt(() => w.reportError.call(w.document, 1)),
+      attempt(() => w.reportError.call(w.document.body, 1)),
       events,
     ];
   },
@@ -76,6 +78,26 @@ parity(
       template.content.firstChild.async,
       d.createRange().createContextualFragment('<script></script>').firstChild.async,
       new w.DOMParser().parseFromString('<script></script>', 'text/html').querySelector('script').async,
+      after(new w.DOMParser().parseFromString('<script async></script>', 'text/html').querySelector('script'), (s) =>
+        s.removeAttribute('async'),
+      ),
+      ...['<script/>', '<script async=""/>'].map((markup) =>
+        after(
+          new w.DOMParser()
+            .parseFromString(`<html xmlns="http://www.w3.org/1999/xhtml">${markup}</html>`, 'application/xhtml+xml')
+            .querySelector('script'),
+          (s) => s.removeAttribute('async'),
+        ),
+      ),
+      (() => {
+        const xhtml = new w.DOMParser().parseFromString(
+          '<html xmlns="http://www.w3.org/1999/xhtml"><body/></html>',
+          'application/xhtml+xml',
+        );
+        const body = xhtml.querySelector('body');
+        body.innerHTML = '<script></script>';
+        return body.firstChild.async;
+      })(),
       d.implementation.createHTMLDocument().createElement('script').async,
       'async' in d.createElementNS('http://www.w3.org/2000/svg', 'script'),
       Object.keys(w.HTMLScriptElement.prototype).includes('async'),

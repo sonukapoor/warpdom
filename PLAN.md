@@ -9433,3 +9433,12 @@ Not changed (all profiles, also with jsdom 30): an exception's error
 event message for a non-Error is "uncaught exception: 'str'" in jsdom
 30 and 31, its value in warpdom ("str"); and jsdom gives the error's
 source position (lineno, colno), warpdom 0.
+
+Review round 1 (#352, reproduced on 31.0.1): a parsed script with an
+async attribute has its force async flag cleared by every parser
+(DOMParser's too: removing the attribute makes async false), and the
+XML fragment parser (innerHTML of an XHTML element) clears it as the
+HTML one does; reportError() throws a TypeError for a receiver that is
+not a window (a document or an element, which the shared reporter maps
+to their window). The superset test's KNOWN entries are one per
+follow-up (G1b, G2), so each fails once its part lands.

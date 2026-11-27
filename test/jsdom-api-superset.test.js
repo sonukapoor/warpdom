@@ -46,14 +46,15 @@ const HTML_TAGS = [
 // jsdom majors it applies to, the issue and why. An entry that matches
 // nothing in any version fails the test: remove it then.
 const KNOWN = [
-  // jsdom 31's API not added yet (#269): the descriptor interfaces of
-  // @page margin boxes and @font-face, the rest of the @page descriptors,
-  // and @function rules.
+  // jsdom 31's API not added yet (#269), one entry per follow-up: @function
+  // rules (part G1b); the descriptor interfaces of @page margin boxes and
+  // @font-face, and the rest of the @page descriptors (part G2).
   {
-    path: /^(window\.)?CSS(MarginDescriptors|FontFaceDescriptors|Function(Rule|Descriptors|Declarations))\b/,
+    path: /^(window\.)?CSSFunction(Rule|Descriptors|Declarations)\b/,
     difference: /^missing$/,
     jsdom: [31, 31],
   },
+  { path: /^(window\.)?CSS(MarginDescriptors|FontFaceDescriptors)\b/, difference: /^missing$/, jsdom: [31, 31] },
   { path: /^CSSPageDescriptors\.prototype\.[a-zA-Z-]+$/, difference: /^missing$/, jsdom: [31, 31] },
 ];
 

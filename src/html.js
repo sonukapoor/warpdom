@@ -232,8 +232,10 @@ function appendAst(internals, parent, astNodes, doc, inTemplate = false, started
         node[S].script = 'started';
       // A parsed script's "force async" flag is cleared (interfaces.js
       // HTMLScriptElement), but for DOMParser's and a document's parsed
-      // without scripting (black box, 31.0.1).
-      if (n.tagName === 'script' && !started && n.namespaceURI === HTML_NS) node[S].forceAsync = false;
+      // without scripting, unless it has an async attribute (black box,
+      // 31.0.1; #352 review).
+      if (n.tagName === 'script' && n.namespaceURI === HTML_NS && (!started || attrs.has('async')))
+        node[S].forceAsync = false;
       if (!inTemplate && hooks.ce !== null) hooks.ce.created(node);
       if (n.content) {
         const content = templateContent(node);
