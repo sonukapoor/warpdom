@@ -178,7 +178,15 @@ parity(
       () => accessor('CSSPseudoElement', 'type').get.call(div),
       () => accessor('CSSPseudoElement', 'element').get.call(div),
       () => w.CSSPseudoElement.prototype.pseudo.call(div, 'x'),
-    ].map(attempt);
+    ].map((f) => {
+      // (what each gives, not its text: a token list would not serialize)
+      try {
+        const value = f();
+        return value === null ? 'null' : typeof value;
+      } catch (e) {
+        return e.name;
+      }
+    });
   },
   { jsdom: 31 },
 );

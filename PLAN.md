@@ -9458,3 +9458,8 @@ the XML document parser clears the fragment flag while it runs (a
 DOMParser call from a custom element's constructor during a fragment
 parse). Left as before: reflected attributes (defer on a div) do not
 check their interface, a difference older than this branch.
+
+Review round 4 (#352, Copilot's summary): part's getter throws for a
+Text node (it has state, but is no element); the receiver test reads
+each result's type, so a token list made for one no longer passes as a
+TypeError from serializing it.

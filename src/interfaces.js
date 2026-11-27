@@ -1695,8 +1695,9 @@ export const INTERFACES = [
         this.classList.value = v;
       },
       // The part attribute's tokens (CSS Shadow Parts), from jsdom 31.
+      // (an element only: a Text node has state too; #352 review)
       get part() {
-        state(this);
+        if (state(this).type !== ELEMENT_NODE) throw new TypeError('Illegal invocation');
         return tokenList(this, 'part', writeAttribute);
       },
       set part(v) {
