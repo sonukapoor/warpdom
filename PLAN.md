@@ -9504,3 +9504,12 @@ Load (Node 22.17, medians against main 79101cf): bench:load cold
 34.7 -> 34.9 ms, first window 2.57 -> 2.56 ms (5 interleaved runs); a new
 window 0.2097 -> 0.2092 ms (7 interleaved processes, 2,000 windows each
 after warm-up; bench:load's next-window figure swung with machine load).
+
+Review round 1 (#353, Copilot; reproduced on 31.0.1): result set with a
+; outside blocks (1;, 1; p {}) is none, as a custom property's value; a
+declaration at the end of a sheet keeps the value the parser closed
+(--x: [a is [a], not [a;]); a parameter default's relative lengths are
+resolved in dimension tokens only (type(item1em): item1em is kept); the
+prelude's commas and brackets in comments are not its own (--f(/* , */
+--a) has one parameter). Not changed: insertRule() of a style rule and
+declarations (p {} --x: 1) already throws a SyntaxError, as in jsdom.

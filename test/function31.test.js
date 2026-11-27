@@ -3,7 +3,10 @@
 // (CSSFunctionDeclarations of custom properties and result, @media,
 // @supports and @container rules), CSSFunctionDescriptors, and
 // insertRule() into the rule and the rules in its block.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 import { parity } from './parity.js';
+import { createWindow } from '../src/node.js';
 
 const attempt = (f) => {
   try {
@@ -241,6 +244,66 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// (#353 review: reproduced on 31.0.1)
+parity(
+  "jsdom 31's @function: a result set with a ;, comments in the prelude",
+  (w) => {
+    const d = w.document;
+    const out = [];
+    for (const value of ['1;', '1; p {}', '1 ;', '{a};', '1;;']) {
+      const style = sheetOf(d, '@function --f() { result: 0 }').cssRules[0].cssRules[0].style;
+      style.setProperty('result', value);
+      const other = sheetOf(d, '@function --f() { result: 0 }').cssRules[0].cssRules[0].style;
+      other.result = value;
+      out.push([value, style.cssText, other.cssText]);
+    }
+    for (const text of [
+      '@function --f(--a type(item1em): item1em) {}',
+      '@function --f(--a type(x1em | <length>): x1em) {}',
+      '@function --f(/* , */ --a) {}',
+      '@function --f(--a /* ) */) {}',
+      '@function --f(/* ( */ --a) {}',
+      '@function --f(--a: 1 /* , */ 2) {}',
+      '@function --f(--a /*,*/ , --b) {}',
+    ])
+      out.push([text, [...sheetOf(d, text).cssRules].map(describe)]);
+    for (const text of ['p {} --x: 1', '--x: 1; p {}', '--x: 1 p {}', 'a:hover{} --x: 1']) {
+      const rule = sheetOf(d, '@function --f() { result: 1 }').cssRules[0];
+      try {
+        rule.insertRule(text, 0);
+        out.push([text, rule.cssText]);
+      } catch (e) {
+        out.push([text, `${e.name}: ${e.message}`]);
+      }
+    }
+    return out;
+  },
+  { jsdom: 31 },
+);
+
+// A block's end at the end of the sheet, closed as parsed (#353 review;
+// jsdom 31 also reports "Could not parse CSS stylesheet" for these, which
+// warpdom does not: values measured on 31.0.1).
+test("jsdom 31's @function block at the end of a sheet", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  assert.deepEqual(
+    [
+      '@function --f() { --x: [a',
+      '@function --f() { --x: "a',
+      '@function --f() { result: (1',
+      '@function --f() { --x: url(a',
+      '@function --f() { --x: 1; @media print { --y: 2 } --z: [a',
+    ].map((text) => sheetOf(d, text).cssRules[0].cssText),
+    [
+      '@function --f() { --x: [a]; }',
+      '@function --f() { --x: "a"; }',
+      '@function --f() { result: (1); }',
+      '@function --f() { --x: url(a); }',
+      '@function --f() { --x: 1; @media print {\n  --y: 2;\n} --z: [a]; }',
+    ],
+  );
+});
 
 parity('jsdom 30 has no @function rules', (w) => [
   'CSSFunctionRule' in w,

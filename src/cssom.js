@@ -1134,8 +1134,10 @@ function functionBody31(protos, body, sheet, parent) {
     if (rule !== null) rules.push(rule);
   };
   for (const item of parseBlockContents31(body ?? '', 'result')) {
+    // (a ; between them, none after the last: --x: [a at the end of the
+    // sheet is [a], as parsed; #353 review)
     if (item.decl !== null) {
-      run += `${item.text};`;
+      run += run === '' ? item.text : `;${item.text}`;
       continue;
     }
     const [record] = parseRules(item.rule, false, nestedBlocks(protos), true);
