@@ -34,7 +34,14 @@
 import { parseDeclarationList31, serializeName31, serializeString31 as quote } from './parse31.js';
 import { decodeEscapes } from './conditions31.js';
 import { DARK_SYSTEM_COLORS_31 } from './colors.js';
-import { UNIVERSAL, independent31, initialText31, parseSyntax31, universalInitial31 } from './property31.js';
+import {
+  UNIVERSAL,
+  independent31,
+  initialText31,
+  matchesSyntax31,
+  parseSyntax31,
+  universalInitial31,
+} from './property31.js';
 
 // --- tokens ---------------------------------------------------------------------------
 
@@ -422,3 +429,145 @@ export function propertyRuleText(data) {
   const initial = data.initial === null ? '' : ` initial-value: ${data.initial};`;
   return `@property ${data.names.map(serializeName31).join(', ')} { syntax: ${quote(data.syntax.text)}; inherits: ${data.inherits};${initial} }`;
 }
+
+// --- @function (#269 part G1b) --------------------------------------------------------
+
+// An @function's prelude (CSS Mixins 1, as jsdom 31 reads it; black box,
+// 31.0.1): a dashed name with its ( right after it, the parameters, then
+// returns and a type, or nothing. A parameter is a dashed name (not --),
+// then a type or nothing (any), then a : and a default value or nothing;
+// names are not repeated. A type is one syntax component (a data type in
+// any case, written in lowercase, or an identifier, a CSS-wide keyword
+// too), with a multiplier or not, or type() of a syntax (* any). A
+// default is a value as @property's initial-value is written, comments
+// dropped, and with a type one that matches it (relative lengths too,
+// var() not); empty, !important or a {} block is none.
+// Its data: { name, params: [{ name, syntax, defaultValue (or null) }],
+// returns (a syntax) }, or null when it is dropped.
+const FUNCTION_NAME = new RegExp(String.raw`^(?:[ \t\n\r\f]|\/\*[\s\S]*?\*\/)*(${IDENT})\(`);
+const PARAMETER_NAME = new RegExp(String.raw`^${IDENT}`);
+const RETURNS = /^returns(?![\w\u0080-￿\\-])/i;
+const CSS_SPACE = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g;
+const cssTrim = (text) => text.replace(CSS_SPACE, '');
+// (comments as spaces, those in strings kept)
+const COMMENT_OR_STRING = /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|\/\*[\s\S]*?(?:\*\/|$)/g;
+const withoutComments = (text) =>
+  text.includes('/*') ? text.replace(COMMENT_OR_STRING, (m, string) => string ?? ' ') : text;
+
+const CLOSER = { '(': ')', '[': ']', '{': '}' };
+// The index of the character that closes the bracket before from, or -1;
+// commas: the indices of the commas outside brackets and strings, filled.
+function closingAt(text, from, commas = null) {
+  const stack = [];
+  for (let i = from; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '\\') i++;
+    else if (c === '(' || c === '[' || c === '{') stack.push(CLOSER[c]);
+    else if (c === ')' || c === ']' || c === '}') {
+      if (stack.length === 0) return c === ')' ? i : -1;
+      if (stack.pop() !== c) return -1;
+    } else if (c === ',' && commas !== null && stack.length === 0) commas.push(i);
+  }
+  return -1;
+}
+// Whether the text has a ! or a { } or ; outside brackets and strings.
+function topLevelStop(text) {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
+    } else if (c === '\\') i++;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === '{' || c === '}' || c === ';' || (c === '!' && depth === 0)) return true;
+  }
+  return false;
+}
+
+const typeSyntax = (text) =>
+  parseSyntax31(
+    text.replace(/<[^<>]*>/g, (m) => m.toLowerCase()),
+    false,
+  );
+function cssType(text) {
+  const t = cssTrim(text);
+  if (/^type\(/i.test(t)) {
+    if (closingAt(t, 5) !== t.length - 1) return null;
+    const inner = cssTrim(t.slice(5, -1));
+    if (inner === '') return null;
+    return inner === '*' ? UNIVERSAL : typeSyntax(inner);
+  }
+  if (t === '*') return null;
+  const syntax = typeSyntax(t);
+  return syntax !== null && syntax.parts.length === 1 ? syntax : null;
+}
+
+function functionParameter(piece) {
+  const text = cssTrim(withoutComments(piece));
+  const m = PARAMETER_NAME.exec(text);
+  const name = m === null ? null : dashedName(m[0]);
+  if (name === null || name === '--') return null;
+  const rest = text.slice(m[0].length);
+  const colon = rest.indexOf(':');
+  const typeText = cssTrim(colon === -1 ? rest : rest.slice(0, colon));
+  const syntax = typeText === '' ? UNIVERSAL : cssType(typeText);
+  if (syntax === null) return null;
+  if (colon === -1) return { name, syntax, defaultValue: null };
+  const raw = cssTrim(rest.slice(colon + 1));
+  if (raw === '' || topLevelStop(raw)) return null;
+  const value = initialText31(raw, false);
+  if (syntax !== UNIVERSAL && !matchesSyntax31(syntax, value)) return null;
+  return { name, syntax, defaultValue: value };
+}
+
+export function functionPrelude31(prelude) {
+  const m = FUNCTION_NAME.exec(prelude);
+  const name = m === null ? null : dashedName(m[1]);
+  if (name === null) return null;
+  const commas = [];
+  const close = closingAt(prelude, m[0].length, commas);
+  if (close === -1) return null;
+  const params = [];
+  const inner = prelude.slice(m[0].length, close);
+  if (cssTrim(withoutComments(inner)) !== '') {
+    let from = m[0].length;
+    for (const end of [...commas, close]) {
+      const param = functionParameter(prelude.slice(from, end));
+      if (param === null || params.some((p) => p.name === param.name)) return null;
+      params.push(param);
+      from = end + 1;
+    }
+  }
+  const rest = cssTrim(withoutComments(prelude.slice(close + 1)));
+  let returns = UNIVERSAL;
+  if (rest !== '') {
+    if (!RETURNS.test(rest)) return null;
+    returns = cssType(rest.slice(7));
+    if (returns === null) return null;
+  }
+  return { name, params, returns };
+}
+
+// (one component bare, more in type(); * left out)
+const typeText = (syntax) => (syntax.parts !== null && syntax.parts.length > 1 ? `type(${syntax.text})` : syntax.text);
+export function functionPreludeText31(data) {
+  const params = data.params.map(
+    (p) =>
+      p.name +
+      (p.syntax === UNIVERSAL ? '' : ` ${typeText(p.syntax)}`) +
+      (p.defaultValue === null ? '' : `: ${p.defaultValue}`),
+  );
+  return `@function ${data.name}(${params.join(', ')})${data.returns === UNIVERSAL ? '' : ` returns ${typeText(data.returns)}`}`;
+}
+// getParameters(): new objects each time.
+export const functionParameters31 = (data) =>
+  data.params.map((p) =>
+    p.defaultValue === null
+      ? { name: p.name, type: p.syntax.text }
+      : { name: p.name, type: p.syntax.text, defaultValue: p.defaultValue },
+  );

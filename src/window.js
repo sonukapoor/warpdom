@@ -27,7 +27,7 @@ import {
 import { INTERFACES, SVG_ELEMENTS, LEGACY_SVG_ELEMENTS, SVG_TYPES_INTERFACES, HTML_NS, SVG_NS } from './interfaces.js';
 import { HTML_ELEMENTS, PLAIN_TAGS } from './html-elements.js';
 import { setupWindow, profileCompat, setupWindowData } from './window-features.js';
-import { setValidationMode, setPositionTryMode } from './css.js';
+import { setValidationMode, setPositionTryMode, setFunctionDescriptorsMode } from './css.js';
 import { namedPropertiesObject, namedAccessPrototype } from './named-access.js';
 import './document-named.js';
 import { xpathException } from './dom-parsing.js';
@@ -449,6 +449,8 @@ export function createWindow(options = {}) {
     if (name === 'CSSStyleProperties') setValidationMode(proto, cssMode(window[S].compat), window[S].compat);
     else if (name === 'CSSPositionTryDescriptors')
       setPositionTryMode(proto, cssMode(window[S].compat), window[S].compat);
+    else if (name === 'CSSFunctionDescriptors')
+      setFunctionDescriptorsMode(proto, cssMode(window[S].compat), window[S].compat);
     Object.defineProperty(protos, name, { value: proto, writable: true, enumerable: true, configurable: true });
     // A constructor property locked before its first read stays the accessor
     // (lockedRead, in its getter).

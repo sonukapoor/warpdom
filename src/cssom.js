@@ -35,6 +35,7 @@ import {
   declaredColor31,
 } from './css.js';
 import { registrations31 } from './property31.js';
+import { parseBlockContents31 } from './parse31.js';
 import {
   familyNames,
   serializeFamilies,
@@ -48,6 +49,9 @@ import {
   viewTransitionText,
   propertyRule,
   propertyRuleText,
+  functionPrelude31,
+  functionPreludeText31,
+  functionParameters31,
 } from './rules31.js';
 import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutComments } from './cssom-declaration.js';
 import { liveList, iterate } from './collections.js';
@@ -1097,6 +1101,14 @@ const NEWER_RULES31 = {
     const data = viewTransition(prelude, body);
     return data === null ? null : makeRule(protos, 'CSSViewTransitionRule', sheet, parentRule, { data, types: null });
   },
+  // (#269 part G1b; the cascade reads none of it)
+  function(protos, prelude, body, sheet, parentRule) {
+    const data = functionPrelude31(prelude);
+    if (data === null) return null;
+    const rule = makeRule(protos, 'CSSFunctionRule', sheet, parentRule, { data, functionBody: true });
+    rule[S].rules = functionBody31(protos, body, sheet, rule);
+    return rule;
+  },
   // (#269 part F2; the cascade reads its registration: cascade.js)
   property(protos, prelude, body, sheet, parentRule) {
     const data = propertyRule(prelude, body);
@@ -1105,6 +1117,50 @@ const NEWER_RULES31 = {
     return makeRule(protos, 'CSSPropertyRule', sheet, parentRule, { data, names: null });
   },
 };
+
+// An @function's block (black box, 31.0.1): its declarations, custom
+// properties and result, each run of them before or after a rule a
+// CSSFunctionDeclarations (none for a run with no valid one; invalid
+// declarations, other rules and statements do not end a run), and @media,
+// @supports and @container rules, whose blocks are read so too. Other
+// rules are dropped.
+const FUNCTION_CONDITIONS = new Set(['media', 'supports', 'container']);
+function functionBody31(protos, body, sheet, parent) {
+  const rules = [];
+  let run = '';
+  const flush = () => {
+    const rule = run === '' ? null : functionDeclarations(protos, run, sheet, parent);
+    run = '';
+    if (rule !== null) rules.push(rule);
+  };
+  for (const item of parseBlockContents31(body ?? '', 'result')) {
+    if (item.decl !== null) {
+      run += `${item.text};`;
+      continue;
+    }
+    const [record] = parseRules(item.rule, false, nestedBlocks(protos), true);
+    const rule = record === undefined ? null : functionCondition(protos, record, sheet, parent);
+    if (rule === null) continue;
+    flush();
+    rules.push(rule);
+  }
+  flush();
+  return rules;
+}
+function functionCondition(protos, record, sheet, parent) {
+  if (record.body === null || !FUNCTION_CONDITIONS.has(record.at)) return null;
+  const rule = createRule(protos, { ...record, body: '' }, sheet, parent);
+  if (rule === null) return null;
+  rule[S].functionBody = true;
+  rule[S].rules = functionBody31(protos, record.body, sheet, rule);
+  return rule;
+}
+// A CSSFunctionDeclarations of the declarations, or null when none is valid.
+function functionDeclarations(protos, text, sheet, parent) {
+  const rule = makeRule(protos, 'CSSFunctionDeclarations', sheet, parent, {});
+  rule[S].style = declarationBlock(protos.CSSFunctionDescriptors, text, rule);
+  return rule[S].style.length === 0 ? null : rule;
+}
 
 // (the whole at-keyword: a name character or an escape after it makes
 // another name, so @font-feature-valuesé and @font-feature-values\41 are
@@ -1302,6 +1358,12 @@ function ruleText(rule) {
       return viewTransitionText(s.data);
     case s.protos.CSSPropertyRule:
       return propertyRuleText(s.data);
+    case s.protos.CSSFunctionRule: {
+      const rules = ruleArray(rule);
+      return `${functionPreludeText31(s.data)} ${rules.length ? `{ ${rules.map(ruleText).join(' ')} }` : '{ }'}`;
+    }
+    case s.protos.CSSFunctionDeclarations:
+      return serializeDeclarations(s.style);
     default:
       return '';
   }
@@ -1401,6 +1463,7 @@ function insertRule31(owner, text, i, sheet, parentRule, nested) {
   const list = ruleArray(owner);
   if (i > list.length)
     throw domError(`Cannot insert a rule at index ${i} in a list of ${list.length} rules.`, 'IndexSizeError');
+  if (s.functionBody === true) return insertFunctionRule31(owner, text, i, sheet, parentRule);
   const records = parseRules(text, true, nestedBlocks(s.protos), true, false);
   if (records.length === 0) throw domError('Cannot parse missing rule', 'SyntaxError');
   // (the first rule read before what follows it: {} a{} is invalid)
@@ -1435,6 +1498,37 @@ function insertRule31(owner, text, i, sheet, parentRule, nested) {
       'InvalidStateError',
     );
   list.splice(i, 0, rule);
+  cssomChanges.rev++;
+  ruleListsChanged(s.protos);
+  return i;
+}
+
+// Into an @function or a rule in its block (black box, 31.0.1): valid
+// declarations, as a CSSFunctionDeclarations, or an @media, @supports or
+// @container rule; another rule is a HierarchyRequestError.
+function insertFunctionRule31(owner, text, i, sheet, parentRule) {
+  const s = owner[S];
+  let rule = null;
+  if (cssTrim(text)[0] !== '@') {
+    const items = parseBlockContents31(text, 'result');
+    if (items.length !== 0 && items.every((item) => item.decl !== null))
+      rule = functionDeclarations(s.protos, text, sheet, parentRule);
+  }
+  if (rule === null) {
+    const records = parseRules(text, true, nestedBlocks(s.protos), true, false);
+    if (records.length === 0) throw domError('Cannot parse missing rule', 'SyntaxError');
+    const [record] = records;
+    const made = record.invalid ? null : createRule(s.protos, record, sheet, parentRule);
+    if (!made) throw domError('Cannot parse invalid rule', 'SyntaxError');
+    const allowed = FUNCTION_CONDITIONS.has(record.at);
+    // (after a rule it does not take, another one is invalid: a{} b{})
+    if (records.length > 1)
+      throw domError(allowed ? 'Cannot parse more than a single rule' : 'Cannot parse invalid rule', 'SyntaxError');
+    rule = allowed ? functionCondition(s.protos, record, sheet, parentRule) : null;
+    if (rule === null)
+      throw domError('Cannot insert this rule inside the parent grouping rule.', 'HierarchyRequestError');
+  }
+  ruleArray(owner).splice(i, 0, rule);
   cssomChanges.rev++;
   ruleListsChanged(s.protos);
   return i;
@@ -2946,6 +3040,35 @@ export const CSSOM_INTERFACES = [
         } catch (e) {
           return Promise.reject(e);
         }
+      },
+    },
+  },
+  // CSS Mixins 1's @function rules (#269 part G1b; hidden before jsdom 31,
+  // window-features.js LATER_GLOBALS).
+  {
+    name: 'CSSFunctionRule',
+    parent: 'CSSGroupingRule',
+    members: {
+      getParameters() {
+        return functionParameters31(state(this).data);
+      },
+      get name() {
+        return state(this).data.name;
+      },
+      get returnType() {
+        return state(this).data.returns.text;
+      },
+    },
+  },
+  {
+    name: 'CSSFunctionDeclarations',
+    parent: 'CSSRule',
+    members: {
+      get style() {
+        return state(this).style;
+      },
+      set style(v) {
+        state(this).style.cssText = v;
       },
     },
   },

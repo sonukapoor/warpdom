@@ -62,8 +62,9 @@ export const UNIVERSAL = Object.freeze({ text: '*', parts: null });
 
 // A syntax string's syntax: { text (as written back), parts ([{ type,
 // ident, mult }]: type a TYPES name or 'ident') }, UNIVERSAL, or null when
-// it is no syntax.
-export function parseSyntax31(text) {
+// it is no syntax. reserved: whether the CSS-wide keywords and default
+// are no identifier (an @function's types take them; black box, 31.0.1).
+export function parseSyntax31(text, reserved = true) {
   const trimmed = text.replace(CSS_SPACE, '');
   if (trimmed === '*') return UNIVERSAL;
   const parts = [];
@@ -75,7 +76,7 @@ export function parseSyntax31(text) {
       if (!TYPES.has(type) || (type === 'transform-list' && mult !== '')) return null;
       parts.push({ type, ident: null, mult });
     } else {
-      if (RESERVED.has(ident.toLowerCase())) return null;
+      if (reserved && RESERVED.has(ident.toLowerCase())) return null;
       parts.push({ type: 'ident', ident, mult });
     }
   }
@@ -465,6 +466,20 @@ export function independent31(syntax, text) {
   const list = tokenizeValue(text.includes('/*') ? withoutComments(text) : text);
   if (list !== null && dependentUnits(list)) return false;
   return matchValue31(syntax, text, INDEPENDENT) !== null;
+}
+// Whether a value (written by initialText31) matches the syntax, its
+// relative lengths too (an @function parameter's default; black box,
+// 31.0.1: 1em is a <length>, var() is none).
+// (relative lengths read as px: calc(1em + 1px) is a length)
+const RELATIVE_LENGTH = /(\d(?:[eE][+-]?\d+)?)([A-Za-z]+)/g;
+const ANY_LENGTH = {
+  ...INDEPENDENT,
+  length: () => 0,
+  resolve: (text) =>
+    text.replace(RELATIVE_LENGTH, (m, digits, unit) => (DEPENDENT_UNITS.has(unit.toLowerCase()) ? `${digits}px` : m)),
+};
+export function matchesSyntax31(syntax, text) {
+  return !hasVarReference(text) && matchValue31(syntax, ANY_LENGTH.resolve(text), ANY_LENGTH) !== null;
 }
 // A universal syntax's initial value: any value but a CSS-wide keyword
 // or one with var().

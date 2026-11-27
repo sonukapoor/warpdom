@@ -9463,3 +9463,40 @@ Review round 4 (#352, Copilot's summary): part's getter throws for a
 Text node (it has state, but is no element); the receiver test reads
 each result's type, so a token list made for one no longer passes as a
 TypeError from serializing it.
+
+## 2026-11-27: jsdom 31, part G1b: @function rules (branch feat/269-jsdom31-function, #269)
+
+CSS Mixins 1's @function, as jsdom 31 reads it (black box, 31.0.1), in
+the 31 profile only (rules31.js reads the prelude, cssom.js the block):
+- Prelude: a dashed name (any case, escapes read; -- too) with its (
+  right after it, parameters, then returns and a type, or nothing. A
+  parameter is a dashed name (not --), a type or nothing (*), then : and
+  a default or nothing; no name twice, no empty one. A type is one
+  syntax component bare (a data type in any case, written in lowercase,
+  or an identifier, a CSS-wide keyword too; bare * is none) or type()
+  of a syntax (type(*) is *). Written back: one component bare, more in
+  type(), * left out. A default is written as @property's initial-value
+  (comments dropped, 1E1 is 10, strings in double quotes); empty,
+  !important or a {} block is none, and with a type it must match it:
+  relative lengths match (1em, calc(1em + 1px)), var() does not
+  (property31.js matchesSyntax31).
+- Block (parse31.js parseBlockContents31): runs of declarations, custom
+  properties and result, each a CSSFunctionDeclarations (none for a run
+  with no valid one); dropped declarations, other rules and statements
+  do not end a run; @media, @supports and @container rules, their
+  blocks read the same way; other rules dropped. !important ones are
+  dropped. result takes any value, a {} block too, written as an
+  initial-value is; empty is result: ;.
+- CSSFunctionDescriptors: custom properties and result only (a surface
+  like CSSPositionTryDescriptors', css.js setFunctionDescriptorsMode);
+  its own @@iterator. CSSFunctionDeclarations: style, its cssText the
+  rule's. getParameters(): new objects each call.
+- insertRule() into the rule or a rule in its block: declarations (a
+  CSSFunctionDeclarations, invalid when none is valid), or @media,
+  @supports, @container; another rule is a HierarchyRequestError, more
+  than one an invalid rule unless the first is one of those.
+- The cascade reads none of it (custom functions are not evaluated, as
+  in jsdom 31). @function in @media, @supports, @layer and @container
+  rules is kept; type is 0.
+Not modeled: own property order (jsdom's prototypes list constructor
+first; warpdom's interfaces never did).

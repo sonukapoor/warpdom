@@ -610,7 +610,9 @@ export function serialize31(decls) {
   const add = (name, value, important) => {
     // (a custom property's name as an identifier: --a\3a b is --a\:b)
     const custom = name.startsWith('--');
-    const shown = custom ? value : present31(value);
+    // (an @function's result read empty, one space: result: ;)
+    let shown = custom ? value : present31(value);
+    if (!custom && shown === ' ') shown = '';
     out += `${out ? ' ' : ''}${custom ? serializeName31(name) : name}: ${shown}${important ? ' !important' : ''};`;
   };
   for (const [name, decl] of decls) {

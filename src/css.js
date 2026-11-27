@@ -58,7 +58,7 @@ import {
 } from './box-declarations.js';
 import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand31 } from './css31.js';
 import { canonical31 } from './declared31.js';
-import { closed31, parseDeclarationList31, parseValue31, trimmed31 } from './parse31.js';
+import { closed31, parseBlockContents31, parseDeclarationList31, parseValue31, trimmed31 } from './parse31.js';
 import { hasVarReference } from './var-substitution.js';
 import { documentBaseURL } from './base-url.js';
 import {
@@ -4531,7 +4531,10 @@ function parseInto31(decls, text, mode, surface, asWritten) {
     }
     const name = decl.custom ? decl.name : decl.name.toLowerCase();
     if (dropped(surface, name) || (decl.important && surface.noImportant === true)) continue;
-    const declared = declaredValue(name, decl.value, mode, surface);
+    const declared =
+      surface.functionResult === true && name === 'result'
+        ? resultValue31(decl.value)
+        : declaredValue(name, decl.value, mode, surface);
     if (declared === INVALID || declared === '') continue;
     const stored = set31(
       decls,
@@ -6066,7 +6069,7 @@ function setDeclaration31(style, s, name, value, priority) {
   const lower = String(priority).toLowerCase();
   if (lower !== '' && lower !== 'important') return;
   if (lower === 'important' && s.surface.noImportant === true) return;
-  const text = writtenValue(name, raw, s);
+  const text = s.surface.functionResult === true && name === 'result' ? resultSet31(raw) : writtenValue(name, raw, s);
   if (text === INVALID || text === '') return;
   // (written by a script now, not read empty: --x:  ; when it is one
   // space, even if the value is the same)
@@ -6420,6 +6423,8 @@ const POSITION_TRY_DESCRIPTORS = [
 ];
 const POSITION_TRY_NAMES = new Set(POSITION_TRY_DESCRIPTORS);
 const positionTryDescriptors = () => descriptorAccessors(POSITION_TRY_DESCRIPTORS);
+// CSSFunctionDescriptors' accessor (CSS Mixins 1): result.
+const functionDescriptors = () => descriptorAccessors(['result']);
 function descriptorAccessors(names) {
   const descriptors = Object.create(null);
   for (const name of names) {
@@ -6660,6 +6665,7 @@ export const CSS_INTERFACES = [
   },
   { name: 'CSSPageDescriptors', parent: 'CSSStyleDeclaration', descriptors: pageDescriptors },
   { name: 'CSSPositionTryDescriptors', parent: 'CSSStyleDeclaration', descriptors: positionTryDescriptors },
+  { name: 'CSSFunctionDescriptors', parent: 'CSSStyleDeclaration', descriptors: functionDescriptors },
 ];
 
 // CSSPositionTryDescriptors (jsdom 31, black box 31.0.1): the profile's
@@ -6677,6 +6683,32 @@ export function setPositionTryMode(proto, mode, compat) {
     positionTrySurfaces.set(base, (surface = { ...base, drops, noImportant: true }));
   }
   surfaces.set(proto, surface);
+}
+// CSSFunctionDescriptors (an @function's declarations; jsdom 31, black
+// box 31.0.1): custom properties and result, none !important; result
+// takes any value (a {} block too), written as @property's initial-value
+// is (resultValue31).
+const functionSurfaces = new WeakMap(); // surface -> its descriptors' surface
+const FUNCTION_DROPS = { has: (name) => name !== 'result' && !name.startsWith('--') };
+export function setFunctionDescriptorsMode(proto, mode, compat) {
+  setValidationMode(proto, mode, compat);
+  const base = surfaces.get(proto);
+  if (base === undefined) return;
+  let surface = functionSurfaces.get(base);
+  if (surface === undefined) {
+    surface = { ...base, drops: FUNCTION_DROPS, noImportant: true, functionResult: true };
+    functionSurfaces.set(base, surface);
+  }
+  surfaces.set(proto, surface);
+}
+// (empty: one space, as a custom property's: result: ;)
+const resultValue31 = (value) => initialText31(value, false) || ' ';
+// result set (setProperty, the accessor): one declaration's value, not
+// !important.
+function resultSet31(raw) {
+  const items = parseBlockContents31(`result:${raw}`, 'result');
+  if (items.length !== 1 || items[0].decl === null || items[0].decl.important) return INVALID;
+  return resultValue31(items[0].decl.value);
 }
 // An @position-try rule's descriptors: !important ones are dropped, when
 // parsed and when set (noImportant; black box, 31.0.1).

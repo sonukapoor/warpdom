@@ -386,6 +386,42 @@ export function parseDeclarationList31(text, atRules, anyValue) {
   return out;
 }
 
+// A block's contents (CSS Syntax 3), as jsdom 31 reads an @function's
+// (#269 part G1b): its declarations and at-rules with blocks in order,
+// each as { decl } (parseDeclarationList31's) and the declaration's text
+// up to its ;, or { rule: the at-rule's text }. Other rules and
+// statements are dropped. Custom properties and anyValue (a name in
+// lowercase) take {} blocks in their values.
+export function parseBlockContents31(text, anyValue) {
+  tokenize(text);
+  keepRaw = false;
+  const out = [];
+  let k = 0;
+  while (k < count) {
+    const type = TYPE[k];
+    if (type === WS || type === COMMENT || type === SEMI) {
+      k++;
+      continue;
+    }
+    let end = -1;
+    if (type === IDENT) {
+      const name = decode(text, START[k], END[k]);
+      const blocks = name.startsWith('--') || name.toLowerCase() === anyValue;
+      end = blockDeclarationEnd(text, k, blocks ? name.toLowerCase() : undefined);
+    }
+    if (end === -1) {
+      end = atRuleEnd(text, k);
+      if (type === AT) out.push({ decl: null, rule: text.slice(START[k], end < count ? END[end] : text.length) });
+      k = end + 1;
+      continue;
+    }
+    const decl = declaration(text, k, end, end === count && depth > 0 ? closers() : '');
+    if (decl !== null) out.push({ decl, text: text.slice(START[k], end < count ? START[end] : text.length) });
+    k = end + 1;
+  }
+  return out;
+}
+
 // Where the declaration at k in a list of rules and declarations ends (its
 // ;), or -1 when it is none (CSS Syntax 3, consume a declaration, as jsdom
 // 31 reads it: a name, a colon, then a value valid for it; anyValue's
