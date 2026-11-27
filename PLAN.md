@@ -9500,3 +9500,7 @@ the 31 profile only (rules31.js reads the prelude, cssom.js the block):
   rules is kept; type is 0.
 Not modeled: own property order (jsdom's prototypes list constructor
 first; warpdom's interfaces never did).
+Load (Node 22.17, medians against main 79101cf): bench:load cold
+34.7 -> 34.9 ms, first window 2.57 -> 2.56 ms (5 interleaved runs); a new
+window 0.2097 -> 0.2092 ms (7 interleaved processes, 2,000 windows each
+after warm-up; bench:load's next-window figure swung with machine load).
