@@ -31,7 +31,7 @@
 //   written with their escapes (\31 a).
 // A descriptor that is !important or does not parse is dropped; the last
 // valid one wins.
-import { parseDeclarationList31, serializeName31, serializeString31 as quote } from './parse31.js';
+import { parseDeclarationList31, parseValue31, serializeName31, serializeString31 as quote } from './parse31.js';
 import { decodeEscapes } from './conditions31.js';
 import { DARK_SYSTEM_COLORS_31 } from './colors.js';
 import {
@@ -268,9 +268,14 @@ export const emptyPrelude = (prelude) => tokens(prelude)?.length === 0;
 // A prelude that is one dashed identifier: its name as written back
 // (escapes read, then written where needed: --\70 is --p), or null.
 export function dashedName(prelude) {
+  const name = decodedName(prelude);
+  return name === null ? null : serializeName31(name);
+}
+// Its name with the escapes read (--f\:x is --f:x), or null.
+function decodedName(prelude) {
   const list = tokens(prelude);
   if (list?.length !== 1 || list[0].t !== 'ident' || !list[0].v.startsWith('--')) return null;
-  return serializeName31(list[0].v);
+  return list[0].v;
 }
 
 // The rule's data, or null when it is dropped (no valid font-family).
@@ -443,22 +448,39 @@ export function propertyRuleText(data) {
 // dropped, and with a type one that matches it (relative lengths too,
 // var() not); empty, !important or a {} block is none.
 // Its data: { name, params: [{ name, syntax, defaultValue (or null) }],
-// returns (a syntax) }, or null when it is dropped.
+// returns (a syntax) }, or null when it is dropped; names with their
+// escapes read (CSSFunctionRule.name, getParameters(); #353 review).
 const FUNCTION_NAME = new RegExp(String.raw`^(?:[ \t\n\r\f]|\/\*[\s\S]*?\*\/)*(${IDENT})\(`);
 const PARAMETER_NAME = new RegExp(String.raw`^${IDENT}`);
 const RETURNS = /^returns(?![\w\u0080-￿\\-])/i;
 const CSS_SPACE = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g;
 const cssTrim = (text) => text.replace(CSS_SPACE, '');
-// (comments as spaces, those in strings kept)
-const COMMENT_OR_STRING = /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|\/\*[\s\S]*?(?:\*\/|$)/g;
+// (comments as spaces, those in strings and unquoted urls kept: url(a/*b)
+// is one url; #353 review)
+const COMMENT_OR_STRING =
+  /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|(\burl\([ \t\n\r\f]*(?!["'])(?:[^)\\]|\\[\s\S])*\)?)|\/\*[\s\S]*?(?:\*\/|$)/gi;
 const withoutComments = (text) =>
-  text.includes('/*') ? text.replace(COMMENT_OR_STRING, (m, string) => string ?? ' ') : text;
+  text.includes('/*') ? text.replace(COMMENT_OR_STRING, (m, string, url) => string ?? url ?? ' ') : text;
 
 const CLOSER = { '(': ')', '[': ']', '{': '}' };
 // The index of a comment's last character (its /), or the text's last.
 function commentEnd(text, at) {
   const end = text.indexOf('*/', at + 2);
   return end === -1 ? text.length - 1 : end + 1;
+}
+// When an unquoted url starts at the index (url(a[b.png), CSS Syntax 3's
+// <url-token>: its contents are no brackets, comments or separators; #353
+// review), the index of its ), or the text's last; else -1.
+const URL_START = /url\([ \t\n\r\f]*(?!["'])/iy;
+function unquotedUrlEnd(text, at) {
+  if ((text[at] !== 'u' && text[at] !== 'U') || /[\w\u0080-\uffff\\-]/.test(text[at - 1] ?? '')) return -1;
+  URL_START.lastIndex = at;
+  if (!URL_START.test(text)) return -1;
+  for (let i = URL_START.lastIndex; i < text.length; i++) {
+    if (text[i] === '\\') i++;
+    else if (text[i] === ')') return i;
+  }
+  return text.length - 1;
 }
 // The index of the character that closes the bracket before from, or -1;
 // commas: the indices of the commas outside brackets, strings and
@@ -472,6 +494,7 @@ function closingAt(text, from, commas = null) {
       while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
     } else if (c === '/' && text[i + 1] === '*') i = commentEnd(text, i);
     else if (c === '\\') i++;
+    else if (unquotedUrlEnd(text, i) !== -1) i = unquotedUrlEnd(text, i);
     else if (c === '(' || c === '[' || c === '{') stack.push(CLOSER[c]);
     else if (c === ')' || c === ']' || c === '}') {
       if (stack.length === 0) return c === ')' ? i : -1;
@@ -491,6 +514,7 @@ function topLevelStop(text) {
       while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
     } else if (c === '/' && text[i + 1] === '*') i = commentEnd(text, i);
     else if (c === '\\') i++;
+    else if (unquotedUrlEnd(text, i) !== -1) i = unquotedUrlEnd(text, i);
     else if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
     else if (c === '{' || c === '}' || c === ';' || (c === '!' && depth === 0)) return true;
@@ -519,7 +543,7 @@ function cssType(text) {
 function functionParameter(piece) {
   const text = cssTrim(withoutComments(piece));
   const m = PARAMETER_NAME.exec(text);
-  const name = m === null ? null : dashedName(m[0]);
+  const name = m === null ? null : decodedName(m[0]);
   if (name === null || name === '--') return null;
   const rest = text.slice(m[0].length);
   const colon = rest.indexOf(':');
@@ -528,7 +552,8 @@ function functionParameter(piece) {
   if (syntax === null) return null;
   if (colon === -1) return { name, syntax, defaultValue: null };
   const raw = cssTrim(rest.slice(colon + 1));
-  if (raw === '' || topLevelStop(raw)) return null;
+  // (and a value: a bad url or string is none, url(a b); #353 review)
+  if (raw === '' || topLevelStop(raw) || parseValue31(raw, true) === null) return null;
   const value = initialText31(raw, false);
   if (syntax !== UNIVERSAL && !matchesSyntax31(syntax, value)) return null;
   return { name, syntax, defaultValue: value };
@@ -536,7 +561,7 @@ function functionParameter(piece) {
 
 export function functionPrelude31(prelude) {
   const m = FUNCTION_NAME.exec(prelude);
-  const name = m === null ? null : dashedName(m[1]);
+  const name = m === null ? null : decodedName(m[1]);
   if (name === null) return null;
   const commas = [];
   const close = closingAt(prelude, m[0].length, commas);
@@ -567,11 +592,11 @@ const typeText = (syntax) => (syntax.parts !== null && syntax.parts.length > 1 ?
 export function functionPreludeText31(data) {
   const params = data.params.map(
     (p) =>
-      p.name +
+      serializeName31(p.name) +
       (p.syntax === UNIVERSAL ? '' : ` ${typeText(p.syntax)}`) +
       (p.defaultValue === null ? '' : `: ${p.defaultValue}`),
   );
-  return `@function ${data.name}(${params.join(', ')})${data.returns === UNIVERSAL ? '' : ` returns ${typeText(data.returns)}`}`;
+  return `@function ${serializeName31(data.name)}(${params.join(', ')})${data.returns === UNIVERSAL ? '' : ` returns ${typeText(data.returns)}`}`;
 }
 // getParameters(): new objects each time.
 export const functionParameters31 = (data) =>

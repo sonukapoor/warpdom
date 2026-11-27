@@ -266,6 +266,16 @@ parity(
       '@function --f(/* ( */ --a) {}',
       '@function --f(--a: 1 /* , */ 2) {}',
       '@function --f(--a /*,*/ , --b) {}',
+      // (an unquoted url is one token; names with their escapes read)
+      '@function --f(--a: url(a[b.png)) {}',
+      '@function --f(--a: url(a/*b.png)) {}',
+      '@function --f(--a: url(a;v.png)) {}',
+      '@function --f(--a: url(a/*x*/b)) {}',
+      '@function --f(--a <url>: url(a[b.png)) {}',
+      '@function --f(--a: url(a)b) {}',
+      '@function --f\\:x() {}',
+      '@function --f(--a\\:b) {}',
+      '@function --f(--a\\:b, --a\\3a b) {}',
     ])
       out.push([text, [...sheetOf(d, text).cssRules].map(describe)]);
     for (const text of ['p {} --x: 1', '--x: 1; p {}', '--x: 1 p {}', 'a:hover{} --x: 1']) {
@@ -303,6 +313,13 @@ test("jsdom 31's @function block at the end of a sheet", () => {
       '@function --f() { --x: 1; @media print {\n  --y: 2;\n} --z: [a]; }',
     ],
   );
+});
+
+// A default that is no value, a bad url, drops the rule (#353 review;
+// measured on 31.0.1, which reports "Could not parse CSS stylesheet").
+test("jsdom 31's @function with a bad url default", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  assert.equal(sheetOf(d, '@function --f(--a: url(a b)) {} p {}').cssRules.length, 1);
 });
 
 parity('jsdom 30 has no @function rules', (w) => [
