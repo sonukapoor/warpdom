@@ -9530,3 +9530,7 @@ moved to internal.js for both). A hex escape in a name takes all its
 digits (up to six): the name pattern had many ways to read \61a, and
 a prelude of 20 such escapes with no ( took 36 s to reject; now linear
 (test: 40 escapes under 500 ms).
+Copilot's closer look on round 3: the duplicate-name check went through
+the parameters read so far (quadratic): 16,000 parameters took 383 ms
+(jsdom 31: 1,150 ms). The names are a set now: 12 ms, and 16,000
+defaults 363 -> 30 ms (median of 3, Node 22.23).

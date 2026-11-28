@@ -576,9 +576,12 @@ export function functionPrelude31(written) {
   const inner = prelude.slice(m[0].length, close);
   if (cssTrim(withoutComments(inner)) !== '') {
     let from = m[0].length;
+    // (names in a set: a long list is read in linear time; #353 review)
+    const names = new Set();
     for (const end of [...commas, close]) {
       const param = functionParameter(prelude.slice(from, end));
-      if (param === null || params.some((p) => p.name === param.name)) return null;
+      if (param === null || names.has(param.name)) return null;
+      names.add(param.name);
       params.push(param);
       from = end + 1;
     }
