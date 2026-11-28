@@ -9535,32 +9535,51 @@ the parameters read so far (quadratic): 16,000 parameters took 383 ms
 (jsdom 31: 1,150 ms). The names are a set now: 12 ms, and 16,000
 defaults 363 -> 30 ms (median of 3, Node 22.23).
 Copilot's closer look on round 4: comments before the name were read
-by a lazy comment body that could also hold a */, so a run of them had
+by a lazy comment body that could also hold a `*/`, so a run of them had
 many readings and a prelude without a name backtracked exponentially
 (24 comments: 135 ms, 40: about a minute). The body is now one that
 cannot hold its end (linear: 5,000 comments in 1.5 ms, jsdom 31 1.1 ms;
-the same rules as jsdom 31 for runs of comments, /***/ and * / inside).
+the same rules as jsdom 31 for runs of comments, `/***/` and `* /` inside).
 Copilot's closer look on 36b3fad (escaped at-keywords, escaped comment
 openers; reproduced on 31.0.1, 18 of 28 probes differed):
-- jsdom 31 reads an at-keyword's escapes, for every rule (@\6d edia is
-  @media, @f\75nction @function, @prop\65rty @property; @m\65dia is no
-  @media: \65d is one escape). warpdom read [\w-]+ only, so these were
-  dropped (on main too, for the rules before G1b). The 31 profile now
-  reads the at-keyword with its escapes where records are made (cssom.js
-  RAW_AT, also for the newer rules' check); the older profiles keep
-  theirs (jsdom 30 drops them all).
-- A default's comments are dropped as an initial value's (a/*b*/c is ac,
-  1/*b*/2 12), and an escape keeps a /* from opening one (\/* x */ is
-  kept); the name and type are read with comments blanked to their
-  length, the default from the text as written. An @function's result
-  is read as written too (parse31.js: no property is named result), so
-  result: a/*b*/c is ac.
+- jsdom 31 reads an at-keyword's escapes, for every rule (`@\6d edia` is
+  `@media`, `@f\75nction` `@function`, `@prop\65rty` `@property`;
+  `@m\65dia` is no `@media`: `\65d` is one escape). warpdom read `[\w-]+`
+  only, so these were dropped (on main too, for the rules before G1b).
+  The 31 profile now reads the at-keyword with its escapes where records
+  are made (cssom.js `RAW_AT`, also for the newer rules' check); the older
+  profiles keep theirs (jsdom 30 drops them all).
+- A default's comments are dropped as an initial value's (`a/*b*/c` is
+  `ac`, `1/*b*/2` `12`), and an escape keeps a `/*` from opening one
+  (`\/* x */` is kept); the name and type are read with comments blanked
+  to their length, the default from the text as written. An @function's
+  result is read as written too (parse31.js: no property is named
+  result), so `result: a/*b*/c` is `ac`.
 - An unquoted url in an initial value, default or result has its escapes
-  read and is written again (url(\61) is url(a), url(\28) url(\(), url(\9)
-  url(\9 ), URL( url(); @property's initial-value had the same gap (on
-  main too). The new regexes are linear (50,000 escapes: 4 to 24 ms).
+  read and is written again (`url(\61)` is `url(a)`, `url(\28)`
+  `url(\()`, `url(\9)` `url(\9 )`, `URL(` `url(`); @property's
+  initial-value had the same gap (on main too). The new regexes are
+  linear (50,000 escapes: 4 to 24 ms).
 Review round on b279580 (Copilot): a six-digit escape followed by
-another hex digit (url(\000061bc.png), @\00006dedia) was refused by the
-escape pattern's lookahead, so the url was written empty; six digits are
-taken as they are now, the lookahead only for one to five (as
-rules31.js's ESCAPE).
+another hex digit (`url(\000061bc.png)`, `@\00006dedia`) was refused by
+the escape pattern's lookahead, so the url was written empty; six digits
+are taken as they are now, the lookahead only for one to five (as
+rules31.js's `ESCAPE`).
+Review round on 24844e1 (both bots; reproduced on 31.0.1):
+- The CSS examples above are code spans (CodeRabbit: `*b*` read as
+  emphasis).
+- An at-rule's prelude is trimmed of CSS whitespace only in the 31
+  profile (cssTrim): U+00A0 is a token there, so
+  `@supports (color: red)  { }` and `@container` are dropped, as in
+  jsdom 31 (on main too). jsdom 31 also keeps a U+00A0 inside @media,
+  @layer and @import preludes' text: #358.
+- An escaped url name (`u\72l(`, `U\52L(`, `\75rl(`) is an unquoted url
+  in the @function prelude's scanner and in initial values (three name
+  characters read, so a long name is not read again at each u: 20,000
+  `u\72 ` in 9 ms, 6.5 s before). The sheet's splitter (shared by every
+  profile) still reads only `url(`, so such a rule is dropped: #358.
+- Copilot's closer look (large defaults): initialText31 read the last
+  character of the text it was building at each piece, which flattens
+  the string each time: quadratic (80,000 urls in a default: 2,090 ms,
+  jsdom 31 50 ms; on main too, for @property's initial-value). The last
+  character is kept apart now: 18 ms (320,000: 67 ms).

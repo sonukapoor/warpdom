@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parity } from './parity.js';
 import { createWindow } from '../src/node.js';
+import { functionPrelude31 } from '../src/rules31.js';
 
 const attempt = (f) => {
   try {
@@ -146,6 +147,8 @@ const ESCAPES = [
   '@position-tr\\79 --p { top: 1px } @font-palette-v\\61lues --p { font-family: a }',
   '@\\00006dedia print { p {} } @\\000066\\000075nction --f(--a: url(\\000061bc.png)) { result: url(\\000062c) }',
   '@property --x { syntax: "*"; inherits: false; initial-value: url(\\0000611) }',
+  '@supports (color: red)  { p {} } @supp\\6f rts (color: red)  { p {} }',
+  '@container (width > 0)  { p {} } @supports (color: red) { q {} }',
   '@function --f(--a: a/*b*/c) {}',
   '@function --f(--a: 1/*b*/2) {}',
   '@function --f(--a: a /*b*/c) {}',
@@ -364,6 +367,26 @@ test("jsdom 31's @function prelude with many escapes", () => {
   const sheet = sheetOf(d, `@function --${'\\616161'.repeat(40)} x {} p {}`);
   assert.equal(sheet.cssRules.length, 1);
   assert.ok(performance.now() - started < 500);
+});
+
+// (an escaped url name read as url, its brackets no brackets: jsdom 31
+// writes url(a[b.png); the sheet's splitter does not read the name yet,
+// #358; #353 review)
+test("jsdom 31's @function prelude with an escaped url name", () => {
+  for (const name of ['u\\72l', 'U\\52L', '\\75rl'])
+    assert.equal(functionPrelude31(`--f(--a: ${name}( a[b.png ))`).params[0].defaultValue, 'url(a[b.png)');
+  assert.equal(functionPrelude31('--f(--a: u\\72lx(a[b.png))'), null);
+});
+
+test("jsdom 31's @function defaults with many urls and escapes", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  const started = performance.now();
+  const sheet = sheetOf(
+    d,
+    `@function --f(--a: ${'url(x) '.repeat(80000)}) {} @function --g(--a: ${'u\\72 '.repeat(20000)}) {}`,
+  );
+  assert.equal(sheet.cssRules.length, 2);
+  assert.ok(performance.now() - started < 1000);
 });
 
 test("jsdom 31's @function prelude with many comments", () => {

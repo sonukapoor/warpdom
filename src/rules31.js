@@ -484,12 +484,27 @@ function commentEnd(text, at) {
 // <url-token>: its contents are no brackets, comments or separators; #353
 // review), the index of its ), or the text's last; else -1.
 // (the quote checked before the spaces are read: url( "a)b") is quoted)
+// (url's name with escapes too, u\72l( and \75rl(, as jsdom 31's tokenizer
+// reads it; three name characters, as url's, so a long name is not read
+// at each u in it; #353 review)
 const URL_START = /url\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*/iy;
+const URL_NAME = new RegExp(String.raw`(?:${NAME_CHAR}|${ESCAPE}){3}\(`, 'y');
+const URL_CONTENTS_START = /(?![ \t\n\r\f]*["'])[ \t\n\r\f]*/y;
 function unquotedUrlEnd(text, at) {
-  if ((text[at] !== 'u' && text[at] !== 'U') || /[\w\u0080-\uffff\\-]/.test(text[at - 1] ?? '')) return -1;
+  const c = text[at];
+  if ((c !== 'u' && c !== 'U' && c !== '\\') || /[\w\u0080-\uffff\\-]/.test(text[at - 1] ?? '')) return -1;
+  let start;
   URL_START.lastIndex = at;
-  if (!URL_START.test(text)) return -1;
-  for (let i = URL_START.lastIndex; i < text.length; i++) {
+  if (URL_START.test(text)) start = URL_START.lastIndex;
+  else {
+    URL_NAME.lastIndex = at;
+    const name = URL_NAME.exec(text);
+    if (name === null || !name[0].includes('\\') || !/^url\($/i.test(decodeEscapes(name[0]))) return -1;
+    URL_CONTENTS_START.lastIndex = at + name[0].length;
+    if (!URL_CONTENTS_START.test(text)) return -1;
+    start = URL_CONTENTS_START.lastIndex;
+  }
+  for (let i = start; i < text.length; i++) {
     if (text[i] === '\\') i++;
     else if (text[i] === ')') return i;
   }
@@ -506,8 +521,8 @@ function closingAt(text, from, commas = null) {
       i++;
       while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
     } else if (c === '/' && text[i + 1] === '*') i = commentEnd(text, i);
-    else if (c === '\\') i++;
     else if (unquotedUrlEnd(text, i) !== -1) i = unquotedUrlEnd(text, i);
+    else if (c === '\\') i++;
     else if (c === '(' || c === '[' || c === '{') stack.push(CLOSER[c]);
     else if (c === ')' || c === ']' || c === '}') {
       if (stack.length === 0) return c === ')' ? i : -1;
@@ -526,8 +541,8 @@ function topLevelStop(text) {
       i++;
       while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
     } else if (c === '/' && text[i + 1] === '*') i = commentEnd(text, i);
-    else if (c === '\\') i++;
     else if (unquotedUrlEnd(text, i) !== -1) i = unquotedUrlEnd(text, i);
+    else if (c === '\\') i++;
     else if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
     else if (c === '{' || c === '}' || ((c === ';' || c === '!') && depth === 0)) return true;

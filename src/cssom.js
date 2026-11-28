@@ -229,7 +229,10 @@ export function parseRules(text, strict = false, nested = false, css31 = false, 
       if (m !== null) at = css31 ? atName(m) : m[1].toLowerCase();
       // (raw: the prelude with its comments, which separate font family
       // names; rules31.js)
-      if (m) records.push({ at, prelude: prelude.slice(m[0].length).trim(), body, raw });
+      // (CSS whitespace only in the 31 profile: U+00A0 is a token there,
+      // @supports (color: red)\u00A0 { } is dropped; #353 review)
+      const rest = m === null ? '' : prelude.slice(m[0].length);
+      if (m) records.push({ at, prelude: css31 ? cssTrim(rest) : rest.trim(), body, raw });
       else if (strict) records.push({ invalid: true });
     } else if (body !== null && prelude !== '') {
       records.push({ selector: prelude, body, raw });
