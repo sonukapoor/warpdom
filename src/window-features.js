@@ -170,15 +170,32 @@ export function setupWindowData(window) {
 // Also atob, btoa and queueMicrotask, the platform's.
 function startTimer(window, repeat, handler, timeout, args) {
   const ws = state(window);
+  // (the handler and timeout converted first, on a closed window too, and
+  // the window's state checked after: a conversion may close or remove it;
+  // black box, jsdom 20 and 30, #355 review)
+  // (a string runs as a script where the environment runs scripts, and
+  // this is the global the test sees; an exception is reported to the
+  // window; black box, jsdom 20 to 30 in Vitest's VM pools, #355 review)
+  // (a Symbol is no DOMString: a TypeError, as jsdom 20 and 30 throw)
+  if (typeof handler === 'symbol') throw new TypeError('Value is a symbol, which cannot be converted to a string.');
+  const source = typeof handler === 'function' ? null : String(handler);
+  // (nor a BigInt a long; one from valueOf is converted, black box, jsdom
+  // 30, #355 review)
+  if (typeof timeout === 'bigint') throw new TypeError('Value is a BigInt which cannot be converted to a number.');
+  const ms = Number(timeout) || 0;
   const timers = ws.timers ?? (ws.timers = { next: 1, handles: new Map() });
+  if (ws.timersClosed === true) return 0;
   const id = timers.next++;
   if (ws.discarded) return id;
-  const callback = typeof handler === 'function' ? handler : () => {};
   const run = () => {
     if (!repeat) timers.handles.delete(id);
-    callback.apply(window, args);
+    try {
+      if (source === null) handler.apply(ws.globalProxy ?? window, args);
+      else if (ws.runScript) ws.runScript(source);
+    } catch (error) {
+      reportError(window, error);
+    }
   };
-  const ms = Number(timeout) || 0;
   timers.handles.set(id, { repeat, handle: repeat ? globalThis.setInterval(run, ms) : globalThis.setTimeout(run, ms) });
   return id;
 }
@@ -195,6 +212,18 @@ export function clearWindowTimers(window) {
   const timers = window[S].timers;
   if (!timers) return;
   for (const id of [...timers.handles.keys()]) stopTimer(window, id);
+}
+
+// A test environment's teardown in Vitest's VM pools (#351), as closing
+// jsdom's window: pending timers never run, and later ones get id 0 and
+// never run, in nested windows too (black box, jsdom 20 to 30).
+export function closeWindowTimers(window) {
+  const ws = window[S];
+  ws.timersClosed = true;
+  clearWindowTimers(window);
+  // (and those of the windows nested in it: an iframe's; #355 review)
+  for (const frames of [ws.childFrames, ws.shadowFrames])
+    if (frames) for (const child of frames) closeWindowTimers(child);
 }
 
 const timerMembers = {
