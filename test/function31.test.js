@@ -144,6 +144,8 @@ const ESCAPES = [
   '@supp\\6frts (color: red) { p {} } @l\\61yer x; @k\\65yframes k { from {} }',
   '@\\69mport "x.css"; @p\\61ge { margin: 1px } @-webkit-k\\65yframes k { from {} }',
   '@position-tr\\79 --p { top: 1px } @font-palette-v\\61lues --p { font-family: a }',
+  '@\\00006dedia print { p {} } @\\000066\\000075nction --f(--a: url(\\000061bc.png)) { result: url(\\000062c) }',
+  '@property --x { syntax: "*"; inherits: false; initial-value: url(\\0000611) }',
   '@function --f(--a: a/*b*/c) {}',
   '@function --f(--a: 1/*b*/2) {}',
   '@function --f(--a: a /*b*/c) {}',

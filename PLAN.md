@@ -9559,3 +9559,8 @@ openers; reproduced on 31.0.1, 18 of 28 probes differed):
   read and is written again (url(\61) is url(a), url(\28) url(\(), url(\9)
   url(\9 ), URL( url(); @property's initial-value had the same gap (on
   main too). The new regexes are linear (50,000 escapes: 4 to 24 ms).
+Review round on b279580 (Copilot): a six-digit escape followed by
+another hex digit (url(\000061bc.png), @\00006dedia) was refused by the
+escape pattern's lookahead, so the url was written empty; six digits are
+taken as they are now, the lookahead only for one to five (as
+rules31.js's ESCAPE).

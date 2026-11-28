@@ -141,9 +141,10 @@ export function initialText31(text, keepComments) {
 // #353 review): its escapes read (url(\61) is url(a)), then a space, a
 // parenthesis, a quote and a backslash escaped, a control character as
 // its code point (url(\9) is url(\9 )); spaces around them dropped. A
-// hex escape is all its digits, and the one space after it its own.
+// hex escape is all its digits (six at most), and the one space after it
+// its own.
 const URL_CONTENTS =
-  /^[ \t\n\r\f]*((?:[^\\ \t\n\r\f)]|\\(?:[0-9a-fA-F]{1,6}(?![0-9a-fA-F])(?:\r\n|[ \t\n\r\f])?|[^0-9a-fA-F]))*)/;
+  /^[ \t\n\r\f]*((?:[^\\ \t\n\r\f)]|\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:\r\n|[ \t\n\r\f])?|[^0-9a-fA-F]))*)/;
 const URL_ESCAPED = new Set([' ', '(', ')', '"', "'", '\\']);
 function urlText(token) {
   const read = readEscapes(URL_CONTENTS.exec(token.slice(4))[1]);

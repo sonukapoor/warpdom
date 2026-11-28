@@ -1172,9 +1172,9 @@ function functionDeclarations(protos, text, sheet, parent) {
 // another name, so @font-feature-valuesé and @font-feature-values\41 are
 // unknown rules; #344 review. Its escapes are read: @f\75nction is
 // @function, as jsdom 31 reads them; #353 review. A hex escape is all its
-// digits, so the name is read one way only.)
+// digits, six at most, so the name is read one way only.)
 const RAW_AT =
-  /^@((?:[\w\u0080-\uffff-]|\\(?:[0-9a-fA-F]{1,6}(?![0-9a-fA-F])(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F]))+)/;
+  /^@((?:[\w\u0080-\uffff-]|\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F]))+)/;
 const atName = (m) => readEscapes(m[1]).replace(/[A-Z]+/g, (c) => c.toLowerCase());
 const newerRule31 = (at) => (Object.hasOwn(NEWER_RULES31, at) ? NEWER_RULES31[at] : null);
 
