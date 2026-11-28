@@ -9583,3 +9583,18 @@ Review round on 24844e1 (both bots; reproduced on 31.0.1):
   the string each time: quadratic (80,000 urls in a default: 2,090 ms,
   jsdom 31 50 ms; on main too, for @property's initial-value). The last
   character is kept apart now: 18 ms (320,000: 67 ms).
+Review round on d07514a (Copilot's closer look; reproduced on 31.0.1):
+- A default of comments only (`--a: /**/`) was taken as an empty one
+  since defaults are read as written (this branch's regression); jsdom
+  31 drops the rule, and so does warpdom again.
+- The 31 profile reads the at-keyword from the text as written, where a
+  comment ends it: `@med/**/ia` is no `@media` (dropped, as in jsdom 31;
+  warpdom read it after removing comments, on main too) and
+  `@media/**/print` is `@media print`. A comment between a media
+  prelude's parts is still nothing, not a space (`print/**/and` is
+  `printand`; on main too): #358.
+- Quadratic default parsing: not found. 14 shapes of prelude (many
+  parameters, long defaults with comments, urls, brackets, strings,
+  escapes, colons, long types) grow linearly from 10,000 to 40,000
+  (at most 37 ms); the quadratic one was initialText31's, fixed in
+  d07514a.

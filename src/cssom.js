@@ -224,15 +224,19 @@ export function parseRules(text, strict = false, nested = false, css31 = false, 
     if (prelude[0] === '@') {
       // (jsdom 31 reads the at-keyword's escapes: @\6d edia is @media;
       // #353 review)
-      const m = (css31 ? RAW_AT : /^@([\w-]+)/).exec(prelude);
+      // (jsdom 31: the at-keyword read from the text as written, where a
+      // comment ends it, @med/**/ia is no @media and @media/**/print is
+      // @media; #353 review)
+      const m = (css31 ? RAW_AT : /^@([\w-]+)/).exec(css31 ? raw : prelude);
       let at = null;
       if (m !== null) at = css31 ? atName(m) : m[1].toLowerCase();
       // (raw: the prelude with its comments, which separate font family
       // names; rules31.js)
       // (CSS whitespace only in the 31 profile: U+00A0 is a token there,
       // @supports (color: red)\u00A0 { } is dropped; #353 review)
-      const rest = m === null ? '' : prelude.slice(m[0].length);
-      if (m) records.push({ at, prelude: css31 ? cssTrim(rest) : rest.trim(), body, raw });
+      let rest = '';
+      if (m !== null) rest = css31 ? cssTrim(stripComments(raw.slice(m[0].length))) : prelude.slice(m[0].length).trim();
+      if (m) records.push({ at, prelude: rest, body, raw });
       else if (strict) records.push({ invalid: true });
     } else if (body !== null && prelude !== '') {
       records.push({ selector: prelude, body, raw });

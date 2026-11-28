@@ -587,7 +587,8 @@ function functionParameter(piece) {
   // (and a value: a bad url or string is none, url(a b); #353 review)
   if (raw === '' || topLevelStop(raw) || parseValue31(raw, true) === null) return null;
   const value = initialText31(raw, false);
-  if (syntax !== UNIVERSAL && !matchesSyntax31(syntax, value)) return null;
+  // (comments only are no default either: --a: /**/; #353 review)
+  if (value === '' || (syntax !== UNIVERSAL && !matchesSyntax31(syntax, value))) return null;
   return { name, syntax, defaultValue: value };
 }
 
