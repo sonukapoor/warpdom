@@ -410,6 +410,15 @@ test("jsdom 31's @function defaults with many urls and escapes", () => {
   assert.ok(performance.now() - started < 1000);
 });
 
+test("jsdom 31's @function typed defaults with many relative lengths", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  const started = performance.now();
+  const sheet = sheetOf(d, `@function --f(--a <length>+: ${'1em '.repeat(80000)}) {}`);
+  assert.equal(sheet.cssRules.length, 1);
+  assert.equal(sheet.cssRules[0].getParameters().length, 1);
+  assert.ok(performance.now() - started < 1000);
+});
+
 test("jsdom 31's @function prelude with many comments", () => {
   const d = createWindow({ jsdom: '31.0.1' }).document;
   const started = performance.now();

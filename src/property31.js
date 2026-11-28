@@ -513,10 +513,16 @@ const ANY_LENGTH = {
     if (tokens === null) return text;
     const at = [];
     relativeLengths(tokens, at);
-    let out = text;
-    for (let i = at.length - 1; i >= 0; i--)
-      out = `${out.slice(0, at[i].e - at[i].unit.length)}px${out.slice(at[i].e)}`;
-    return out;
+    // (the unchanged slices and px, in order, joined once; #353 review)
+    if (at.length === 0) return text;
+    const parts = [];
+    let from = 0;
+    for (const tok of at) {
+      parts.push(text.slice(from, tok.e - tok.unit.length), 'px');
+      from = tok.e;
+    }
+    parts.push(text.slice(from));
+    return parts.join('');
   },
 };
 // The dimension tokens of relative lengths, in order, in functions and
