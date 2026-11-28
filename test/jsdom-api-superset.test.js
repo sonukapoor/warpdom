@@ -45,13 +45,7 @@ const HTML_TAGS = [
 // Known differences: a path pattern, optionally the difference and the
 // jsdom majors it applies to, the issue and why. An entry that matches
 // nothing in any version fails the test: remove it then.
-const KNOWN = [
-  // jsdom 31's API not added yet (#269, part G2): the descriptor interfaces
-  // of @page margin boxes and @font-face, and the rest of the @page
-  // descriptors.
-  { path: /^(window\.)?CSS(MarginDescriptors|FontFaceDescriptors)\b/, difference: /^missing$/, jsdom: [31, 31] },
-  { path: /^CSSPageDescriptors\.prototype\.[a-zA-Z-]+$/, difference: /^missing$/, jsdom: [31, 31] },
-];
+const KNOWN = [];
 
 const known = (major, path, difference) =>
   KNOWN.find(

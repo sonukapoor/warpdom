@@ -57,7 +57,7 @@ import {
   replayBox,
   writeBox,
 } from './box-declarations.js';
-import { set31, remove31, value31, priority31, serialize31, dropped31, shorthand31 } from './css31.js';
+import { set31, remove31, value31, priority31, serialize31, dropped31, longhandsOf31 } from './css31.js';
 import { canonical31 } from './declared31.js';
 import { closed31, parseBlockContents31, parseDeclarationList31, parseValue31, trimmed31 } from './parse31.js';
 import { hasVarReference } from './var-substitution.js';
@@ -70,6 +70,15 @@ import {
   registrations31,
   universalInitial31,
 } from './property31.js';
+import {
+  FONT_FACE_DESCRIPTORS,
+  FONT_FACE_NAMES,
+  MARGIN_NAMES31,
+  PAGE_DESCRIPTORS31,
+  PAGE_NAMES31,
+  fontFaceValue31,
+  pageValue31,
+} from './descriptors31.js';
 
 // backgroundColor -> background-color, webkitAnimation/WebkitAnimation ->
 // -webkit-animation, cssFloat -> float; dashed names map to themselves.
@@ -1347,7 +1356,11 @@ function declaredValue(name, value, mode = 'spec', surface = null) {
     // (the value as declared31.js wrote it before the rules below: written
     // again only when they changed it)
     let canonical = null;
-    if (mode === 'page') out = pageDescriptorValue(name, value);
+    // (jsdom 31's descriptors, descriptors31.js: in canonical form)
+    if (surface !== null && surface.descriptors !== undefined && surface.descriptors.has(name)) {
+      out = (surface.fontFace === true ? fontFaceValue31(name, value) : pageValue31(name, value)) ?? INVALID;
+      canonical = out;
+    } else if (mode === 'page') out = pageDescriptorValue(name, value);
     // (jsdom 31: var() in any case, VAR(--a), is var(), kept as written as
     // a value with var() is, for a property it knows; #327 review)
     else if (
@@ -4509,7 +4522,8 @@ function parseInto31(decls, text, mode, surface, asWritten) {
   // (preprocessing changed the text: a custom property's value is taken
   // from it as written, CR LF, CR, FF and NUL kept; black box, 31.0.1)
   let map = null;
-  for (const decl of parseDeclarationList31(source)) {
+  // (@font-face's src keeps its bad urls: descriptors31.js drops each)
+  for (const decl of parseDeclarationList31(source, undefined, undefined, surface.fontFace === true ? 'src' : null)) {
     if (decl.custom && decl.at !== -1 && source !== written) {
       map ??= preprocessMap(written);
       const slice = source.slice(decl.at, decl.end);
@@ -5859,12 +5873,13 @@ function writtenValue(name, raw, s) {
   if (kept !== null) return kept;
   if (text !== INVALID) return text;
   const decls = new Map();
+  if (s.decls.descriptors !== undefined) descriptorBlock(decls, s.surface);
   parseInto(decls, `${name}: ${raw}`, s.mode, s.surface, null, true, true);
   for (const declared of decls.values()) if (declared.important || declared.masked === true) return INVALID;
   // (jsdom 31: the block holds longhands; the shorthand is read from them)
   if (s.surface?.cssom31 === true && decls.cssom31 === true) {
     const value = value31(decls, name);
-    return value !== '' && decls.size === (shorthand31(name)?.length ?? 1) ? value : INVALID;
+    return value !== '' && decls.size === (longhandsOf31(decls, name)?.length ?? 1) ? value : INVALID;
   }
   const declared = decls.get(name);
   if (declared !== undefined) return decls.size === 1 ? declared.value : INVALID;
@@ -6389,7 +6404,11 @@ function propertiesDescriptors(surfaceKey) {
 
 // CSSPageDescriptors' accessors: each descriptor by its dashed name, and
 // by its camel-cased one where that differs.
-const pageDescriptors = () => descriptorAccessors(PAGE_DESCRIPTORS);
+// jsdom 31's: the page context's properties too (descriptors31.js).
+const pageDescriptors = (variant) => descriptorAccessors(variant === 'jsdom31' ? PAGE_NAMES31 : PAGE_DESCRIPTORS);
+// CSSMarginDescriptors and CSSFontFaceDescriptors (jsdom 31).
+const marginDescriptors = () => descriptorAccessors(MARGIN_NAMES31);
+const fontFaceDescriptors = () => descriptorAccessors(FONT_FACE_NAMES);
 // CSSPositionTryDescriptors (CSS Anchor Positioning 1, @webref/idl
 // css-anchor-position.idl; jsdom 31 adds -webkit-align-self, an alias of
 // align-self): the insets, margins, sizes, self-alignment, position-anchor
@@ -6653,7 +6672,14 @@ export const CSS_INTERFACES = [
     // CSSStyleDeclarations with the accessors (legacyDeclaration).
     alias: (compat) => (compat.jsdom < 29 ? 'CSSStyleDeclaration' : null),
   },
-  { name: 'CSSPageDescriptors', parent: 'CSSStyleDeclaration', descriptors: pageDescriptors },
+  {
+    name: 'CSSPageDescriptors',
+    parent: 'CSSStyleDeclaration',
+    descriptors: pageDescriptors,
+    variant: (compat) => (compat.jsdom >= 31 ? 'jsdom31' : null),
+  },
+  { name: 'CSSMarginDescriptors', parent: 'CSSStyleDeclaration', descriptors: marginDescriptors },
+  { name: 'CSSFontFaceDescriptors', parent: 'CSSStyleDeclaration', descriptors: fontFaceDescriptors },
   { name: 'CSSPositionTryDescriptors', parent: 'CSSStyleDeclaration', descriptors: positionTryDescriptors },
   { name: 'CSSFunctionDescriptors', parent: 'CSSStyleDeclaration', descriptors: functionDescriptors },
 ];
@@ -6702,6 +6728,49 @@ function resultSet31(raw) {
   if (items.length !== 1 || items[0].decl === null || items[0].decl.important) return INVALID;
   return resultValue31(items[0].decl.value);
 }
+// CSSFontFaceDescriptors, CSSPageDescriptors and CSSMarginDescriptors
+// (jsdom 31, black box 31.0.1; descriptors31.js): the profile's style
+// surface with the names other than the interface's dropped, by the name
+// as written (border-width is kept on a page, border-style dropped; its
+// longhands are the shorthand's); the descriptors that are no property
+// (size, marks, ...; @font-face's all) read by their own grammars, in
+// their own caches. @page keeps custom properties and !important, as a
+// style rule does; @font-face neither.
+const descriptorSurfaces = new WeakMap(); // surface -> kind -> its descriptors' surface
+const DESCRIPTOR_KINDS = {
+  fontFace: () => ({
+    drops: { has: (name) => !FONT_FACE_DESCRIPTORS.has(name) },
+    descriptors: FONT_FACE_DESCRIPTORS,
+    fontFace: true,
+    noImportant: true,
+  }),
+  page: () => namesSurface(new Set(PAGE_NAMES31), PAGE_DESCRIPTORS31),
+  margin: () => namesSurface(new Set(MARGIN_NAMES31), MARGIN_DESCRIPTORS31),
+};
+const MARGIN_DESCRIPTORS31 = new Set(['page-margin-safety']);
+const namesSurface = (names, descriptors) => ({
+  drops: { has: (name) => !name.startsWith('--') && !names.has(name) },
+  descriptors,
+});
+// A block of such descriptors: its descriptors are longhands, and only the
+// shorthands it takes are written (css31.js longhandsOf31, serialize31).
+function descriptorBlock(decls, surface) {
+  decls.descriptors = surface.descriptors;
+  decls.drops = surface.drops;
+}
+export function setDescriptorsMode(proto, mode, compat, kind) {
+  setValidationMode(proto, mode, compat);
+  const base = surfaces.get(proto);
+  if (base === undefined) return;
+  let byKind = descriptorSurfaces.get(base);
+  if (byKind === undefined) descriptorSurfaces.set(base, (byKind = new Map()));
+  let surface = byKind.get(kind);
+  if (surface === undefined) {
+    surface = { ...base, ...DESCRIPTOR_KINDS[kind](), caches: Object.create(null) };
+    byKind.set(kind, surface);
+  }
+  surfaces.set(proto, surface);
+}
 // An @position-try rule's descriptors: !important ones are dropped, when
 // parsed and when set (noImportant; black box, 31.0.1).
 export const positionTryBlock = (proto, text, parentRule) => declarationBlock(proto, text, parentRule);
@@ -6720,6 +6789,8 @@ export function declaredColor31(value) {
 export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), context = 'sheet', page = null) {
   const style = Object.create(proto);
   const decls = new Map();
+  const surface = mode === 'page' ? null : surfaceOf(proto);
+  if (surface?.descriptors !== undefined) descriptorBlock(decls, surface);
   if (page !== null) {
     if (page.lastWins) decls.pageLastWins = true;
     else if (surfaceOf(page.styleProto)?.importantByWrittenName === true) decls.pageWrittenKeys = true;
@@ -6730,7 +6801,7 @@ export function declarationBlock(proto, text, parentRule, mode = modeOf(proto), 
     parentRule,
     mode,
     indexed: 0,
-    surface: mode === 'page' ? null : surfaceOf(proto),
+    surface,
   });
   parseInto(styleState(style).decls, text, styleState(style).mode, styleState(style).surface, context);
   reindex(style);

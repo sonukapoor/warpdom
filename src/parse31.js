@@ -350,9 +350,15 @@ const meaningful = (k) => TYPE[k] !== WS && TYPE[k] !== COMMENT;
 // (@property's initial-value); another one with a {} block at its top
 // level is a rule.
 let keepRaw = false;
-export function parseDeclarationList31(text, atRules, anyValue) {
+// badUrls: a declaration name (lowercase) whose value keeps its bad urls
+// and closers of nothing, for its caller to drop each part with one
+// (@font-face's src: url(a b), url(c) is url("c"), so is url(a), ),
+// url(c); black box, 31.0.1).
+let badUrlsIn = null;
+export function parseDeclarationList31(text, atRules, anyValue, badUrls = null) {
   tokenize(text);
   keepRaw = atRules !== undefined;
+  badUrlsIn = badUrls;
   const out = [];
   let k = 0;
   while (k < count) {
@@ -394,6 +400,7 @@ export function parseDeclarationList31(text, atRules, anyValue) {
 // statements are dropped. Custom properties and anyValue (a name in
 // lowercase) take {} blocks in their values.
 export function parseBlockContents31(written, anyValue) {
+  badUrlsIn = null;
   // (read preprocessed, NUL as U+FFFD; each item's text as written, NUL
   // kept in a custom property's value; #353 review)
   const text = preprocessCss(written);
@@ -468,6 +475,7 @@ function atRule(text, k, end, atRules) {
   atRules.push({ name, empty, block: text.slice(END[open], end < count ? START[end] : text.length) });
 }
 
+const keepsBadUrls = (text, from) => badUrlsIn !== null && identIs(text, START[from], END[from], badUrlsIn);
 function declaration(text, from, to, closing) {
   let k = from + 1;
   while (k < to && !meaningful(k)) k++;
@@ -492,13 +500,16 @@ function declaration(text, from, to, closing) {
     while (last >= first && !meaningful(last)) last--;
   }
   // A bad string or url, a closer of nothing, or a ! outside blocks or
-  // right in a var()'s arguments makes it invalid.
+  // right in a var()'s arguments makes it invalid (badUrls' declaration
+  // keeps its bad urls and closers of nothing: its parts with one are
+  // dropped).
+  const lenient = keepsBadUrls(text, from);
   depth = 0;
   let plain = true;
   let withVar = false;
   for (k = first; k <= last; k++) {
     const type = TYPE[k];
-    if (type === BAD_STRING || type === BAD_URL) return null;
+    if (type === BAD_STRING || (type === BAD_URL && !lenient)) return null;
     if (type === COMMENT) plain = false;
     else if (type === DELIM) {
       if (text.charCodeAt(START[k]) === 33 && (depth === 0 || STACK[depth - 1] === VAR)) return null;
@@ -507,6 +518,7 @@ function declaration(text, from, to, closing) {
       if (code === VAR) withVar = true;
       open(code);
     } else if (type === CLOSE) {
+      if (depth === 0 && lenient) continue;
       const top = depth === 0 ? 0 : STACK[depth - 1];
       if ((top === VAR ? 41 : top) !== text.charCodeAt(START[k])) return null;
       depth--;
@@ -591,6 +603,7 @@ function tokenText(text, k) {
 // bad string or url, a closer of nothing, an !important at its end:
 // setProperty('color', 'red; color: blue')).
 export function parseValue31(text, custom = false) {
+  badUrlsIn = null;
   const source = `${custom ? '--x' : 'x'}:${text}`;
   tokenize(source);
   const end = untilSemicolon(source, 2);

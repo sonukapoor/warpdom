@@ -1810,6 +1810,8 @@ const LATER_GLOBALS = [
       'CSSFunctionRule',
       'CSSFunctionDescriptors',
       'CSSFunctionDeclarations',
+      'CSSFontFaceDescriptors',
+      'CSSMarginDescriptors',
     ],
   ],
   [null, ['FormDataEvent', 'TimeRanges', 'ToggleEvent']],
