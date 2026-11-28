@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { jsdomVersion, jsdomProfile, installWindow, VITEST_ALWAYS_KEYS } from '../src/vitest.js';
 import { createWindow } from '../src/index.js';
+import { S } from '../src/internal.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const run = (...args) => {
@@ -420,6 +421,98 @@ test("Vitest: Request takes the window's Blob, File and FormData bodies (#350)",
     assert.deepEqual(await requestBodies(Vm, w), REQUEST_BODIES);
   } finally {
     vmResult.teardown();
+  }
+});
+
+// Vitest's VM pools (#351): the timers are the window's, as with Vitest's
+// jsdom environment there (black box, jsdom 20 to 30 with Vitest 5:
+// numeric ids, a string handler accepted), and teardown stops them as
+// closing jsdom's window does: pending callbacks never run, and later
+// timers get id 0 and never run. The window's other members stay, so code
+// still running after the file reads them as in jsdom (window, document,
+// CustomEvent, performance).
+test("setupVM: the timers are the window's and stop at teardown (#351)", async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const vmModule = await import('node:vm');
+  const vmResult = await environment.setupVM();
+  const context = vmResult.getVmContext();
+  const run = (source) => vmModule.runInContext(source, context);
+  const ran = [];
+  context.__ran = ran;
+  // (cleared at the end whatever teardown does, so a failure cannot keep
+  // the process alive)
+  const armed = [];
+  try {
+    // (#355 review, black box as above: a handler's this is the global, a
+    // string runs as a script, a thrown error is the window's error event;
+    // the handler and timeout are converted before the window's state is
+    // checked, so a handler whose conversion removes its iframe starts no
+    // timer)
+    const seen = run(
+      `new Promise((resolve) => {
+        const out = [typeof setTimeout(() => {}, 0), setTimeout('1', 0) > 0];
+        addEventListener('error', (e) => { out.push(e.message); e.preventDefault(); });
+        setTimeout(function () { out.push(this === window && this === globalThis); }, 0);
+        setTimeout('globalThis.__string = 1', 0);
+        setTimeout(() => { throw new Error('boom'); }, 0);
+        const f = document.createElement('iframe');
+        document.body.append(f);
+        const removing = { toString() { f.remove(); return '__ran.push("removed frame")'; } };
+        globalThis.__removed = f.contentWindow;
+        out.push(__removed.setInterval(removing, 1) > 0);
+        setTimeout(() => resolve([...out, globalThis.__string]), 20);
+      })`,
+    );
+    assert.deepEqual([...(await seen)], ['number', true, true, true, 'boom', 1]);
+    assert.deepEqual(ran, []);
+    // (its timer list: no interval left running)
+    assert.equal(context.__removed[S].timers.handles.size, 0);
+    // Armed, then torn down, with nothing awaited between: teardown, not a
+    // timing margin, decides whether they run. An iframe's stop too.
+    const frame = run(`const f = document.createElement('iframe'); document.body.append(f); f.contentWindow`);
+    armed.push(
+      [context, run(`setTimeout(() => __ran.push('timeout'), 30)`)],
+      [context, run(`setInterval(() => __ran.push('interval'), 10)`)],
+      [frame, frame.setTimeout(() => ran.push('frame timeout'), 20)],
+      [frame, frame.setInterval(() => ran.push('frame interval'), 10)],
+    );
+    vmResult.teardown();
+    assert.deepEqual(
+      [
+        ...run(
+          `[setTimeout(() => __ran.push('late'), 0), setInterval(() => __ran.push('late'), 5),
+            typeof window, typeof document.body, new CustomEvent('x').type, typeof performance.now()]`,
+        ),
+      ],
+      [0, 0, 'object', 'object', 'x', 'number'],
+    );
+    // (a closed window still converts the handler and timeout: id 0 after)
+    const converted = [];
+    const handler = { toString: () => (converted.push('handler'), '') };
+    const delay = { valueOf: () => (converted.push('timeout'), 0) };
+    assert.equal(frame.setTimeout(handler, delay), 0);
+    assert.deepEqual(converted, ['handler', 'timeout']);
+    // (a Symbol handler throws, open or closed, as jsdom 20 and 30's)
+    const symbol = (owner) =>
+      assert.throws(() => owner.setTimeout(Symbol('h'), 0), {
+        name: 'TypeError',
+        message: 'Value is a symbol, which cannot be converted to a string.',
+      });
+    symbol(frame);
+    symbol(createWindow());
+    // (a BigInt timeout is no long: a TypeError; one from valueOf is
+    // converted, as jsdom 30's)
+    for (const owner of [frame, createWindow()]) {
+      assert.throws(() => owner.setTimeout(() => {}, 10n), {
+        name: 'TypeError',
+        message: 'Value is a BigInt which cannot be converted to a number.',
+      });
+      owner.clearInterval(owner.setInterval(() => {}, { valueOf: () => 10n }));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.deepEqual(ran, []);
+  } finally {
+    for (const [owner, id] of armed) owner.clearInterval(id);
   }
 });
 

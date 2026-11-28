@@ -18,7 +18,7 @@ import { S, THISLESS } from './internal.js';
 import { ablated, materializeAll } from './ablate.js';
 import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
-import { HOST_TIMER_KEYS, closeFrames, warnNewerJsdom } from './window-features.js';
+import { HOST_TIMER_KEYS, closeFrames, closeWindowTimers, warnNewerJsdom } from './window-features.js';
 import { blobData } from './file-reader.js';
 import { formDataEntries } from './forms.js';
 import { abortWindowRequests } from './xhr.js';
@@ -96,7 +96,10 @@ const VITEST_URL_KEYS = ['URL', 'URLSearchParams', 'Headers'];
 // descriptor is lazy, ~10 ms) and make the window's read itself.
 const VITEST_PLATFORM_KEYS = ['WebSocket'];
 const VITEST_GLOBAL_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_NODE_KEYS, ...VITEST_URL_KEYS, ...VITEST_PLATFORM_KEYS];
-const VITEST_VM_HOST_KEYS = [...VITEST_HOST_KEYS, ...VITEST_URL_KEYS];
+// In the VM pools the timers are the window's (black box, jsdom 20 to 30
+// with Vitest 5: numeric ids, a string handler accepted), stopped at
+// teardown (#351).
+const VITEST_VM_HOST_KEYS = [...VITEST_HOST_KEYS.filter((key) => !HOST_TIMER_KEYS.includes(key)), ...VITEST_URL_KEYS];
 
 // Vitest's jsdom environment's URL (black box, Vitest 5, jsdom 20 to 30,
 // every pool): a subclass of Node's URL whose createObjectURL() takes the
@@ -606,7 +609,7 @@ export default {
   async setupVM(options) {
     const window = createTestWindow(options);
     const sandbox = {};
-    const restore = installWindow(sandbox, window, {
+    installWindow(sandbox, window, {
       hostKeys: VITEST_VM_HOST_KEYS,
       alwaysKeys: VITEST_ALWAYS_KEYS,
       unforgeable: true,
@@ -639,10 +642,14 @@ export default {
       },
       teardown() {
         abortWindowRequests(window);
-        // Frames stop for good, as closing jsdom's window stops them.
+        // Frames and timers stop for good, as closing jsdom's window stops them.
         closeFrames(window);
+        closeWindowTimers(window);
         forgetLastList();
-        restore();
+        // The context keeps the window's members (the context is the
+        // file's alone): code still running reads them, as in jsdom's
+        // closed window (black box, jsdom 20 to 30 with Vitest 5: window,
+        // document, CustomEvent and performance work; #351).
       },
     };
   },
