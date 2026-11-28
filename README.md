@@ -128,8 +128,8 @@ has before it (`ToggleEvent`, `TimeRanges`, the CSS rule interfaces
 before jsdom 29, ...) get their globals with `beyondJsdom: true`, set
 where `jsdom` is.
 
-warpdom models jsdom 20.0.3 to 30.1.3. With a newer jsdom installed (a
-later minor or major release), tests get jsdom 30.1.3's behavior and
+warpdom models jsdom 20.0.3 to 31.0.1. With a newer jsdom installed (a
+later minor or major release), tests get jsdom 31.0.1's behavior and
 warpdom prints a warning once; a weekly check
 ([upstream-watch](.github/workflows/upstream-watch.yml)) opens an issue
 when such a release appears.

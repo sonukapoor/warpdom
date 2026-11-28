@@ -19,8 +19,7 @@ import { apiSurface, differences } from './api-surface.js';
 const require = createRequire(import.meta.url);
 
 // One release per major from 20 to 31 (the latest of each; the newest is
-// NEWEST_MODELED_JSDOM, or newer while its API is being added), plus the
-// jsdom installed when it is another one.
+// NEWEST_MODELED_JSDOM), plus the jsdom installed when it is another one.
 const ALIASES = [
   'jsdom20',
   'jsdom21',
@@ -168,16 +167,16 @@ test('every jsdom alias loads its own cssstyle only', () => {
   }
 });
 
-test('the versions cover every major from 20 to 30 and the newest modeled', () => {
+test('the versions cover every major from 20 to 31 and the newest modeled', () => {
   const versions = ALIASES.map((alias) => require(`${alias}/package.json`).version);
-  for (let major = 20; major <= 30; major++)
+  for (let major = 20; major <= 31; major++)
     assert.ok(
       versions.some((v) => Number.parseInt(v, 10) === major),
       `jsdom ${major}`,
     );
   assert.ok(
     versions.includes(NEWEST_MODELED_JSDOM),
-    `NEWEST_MODELED_JSDOM ${NEWEST_MODELED_JSDOM}: update the jsdom30 alias`,
+    `NEWEST_MODELED_JSDOM ${NEWEST_MODELED_JSDOM}: update the jsdom31 alias`,
   );
 });
 
