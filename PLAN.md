@@ -9464,6 +9464,48 @@ Text node (it has state, but is no element); the receiver test reads
 each result's type, so a token list made for one no longer passes as a
 TypeError from serializing it.
 
+## 2026-11-27: Vitest: Request takes the window's Blob, File and FormData bodies (branch fix/350-request-bodies, #350)
+
+Reported by an outside user (#350): under warpdom's Vitest environment
+a window FormData or Blob given to Request (and to fetch through MSW,
+which builds a Request from fetch's arguments) was not one to Node's
+fetch: sent as text/plain "[object FormData]", or (jsdom 30 profiles,
+whose Blob has no stream()) a TypeError; jsdom 26 passed.
+
+Black box, Vitest 5 with its jsdom environment (jsdom 26 and 30, forks
+and vmThreads): the global Request is a subclass of Node's (length 0,
+an own @@hasInstance that takes Node's Requests, so a clone is one)
+whose constructor converts the window's Blob, File and FormData bodies
+to Node's: a Blob or File with its bytes and type; a FormData with its
+strings, and its Blob and File entries as Blobs (sent as filename
+"blob", the names lost). Response and fetch are Node's: a window Blob
+given to them directly fails there too (TypeError, or a FormData that
+never resolves).
+
+Decision: the same (vitestRequest, beside vitestURL, one per window and
+reset per file as URL is: installClasses); the "blob" filenames
+matched. Left as they are: Response and a direct fetch (as jsdom's), and
+the enumerability of the Node globals copied into the VM pools' context
+(jsdom's are enumerable, warpdom's not; Request among them: follow-up
+issue).
+
+Review round 1 (#356, both bots): a function as the init is converted
+too, and when the body is converted the init is passed through a Proxy
+that gives the converted body and reads every other member from the
+init itself (its getters keep it as this: a method read from a WeakMap
+keyed by the init; inherited members kept). The body is read once by
+the wrapper (Node reads it first anyway); jsdom's environment reads it
+four or five times (black box), so getter counts are not matched. The
+multipart test ignores the CR LF that Node 22.22 and 24 add at the end.
+fetch() itself is left as jsdom's environment leaves it: MSW 3.0.3's
+setupServer receives the right multipart and Blob bodies from fetch()
+with the fix, as with jsdom (it builds a Request from fetch's arguments),
+and timed out on main.
+Review round 2 (#356, both bots): the proxy's target is an empty object
+and every read but body goes to the init: a frozen init's body (a
+non-writable, non-configurable property) cannot read as another value
+through a proxy of the init itself (a TypeError before).
+
 ## 2026-11-27: Vitest VM pools: the window's timers, a closed window at teardown (branch fix/351-vm-timers, #351)
 
 Reported by an outside user (#351): in the VM pools (vmThreads,

@@ -323,6 +323,107 @@ test("Vitest keeps Node's AbortController and AbortSignal, as its jsdom environm
   }
 });
 
+// Vitest's jsdom environment's Request (#350; black box, Vitest 5, jsdom
+// 26 and 30, every pool): a subclass of Node's whose constructor takes
+// the window's Blob, File and FormData bodies (as Node's, of their bytes
+// and type; a FormData's Blob and File entries are sent as "blob", their
+// names left out). Its length is 0, Node's Requests are its instances;
+// the other bodies are Node's to read.
+async function requestBodies(Request, w) {
+  const form = new w.FormData();
+  form.append('a', '1');
+  form.append('b', new w.Blob(['x'], { type: 'text/x-b' }), 'b.bin');
+  form.append('c', new w.File(['y'], 'c.txt', { type: 'text/x-c' }));
+  const post = (body, init = {}) => new Request('http://x/', { method: 'POST', body, ...init });
+  const blob = post(new w.Blob(['d'], { type: 'application/octet-stream' }));
+  const file = post(new w.File(['f'], 'n.txt', { type: 'text/x-f' }));
+  const multipart = post(form);
+  // (boundaries as --B; Node 22.22 and 24 end the body with a CR LF, 22.17
+  // does not)
+  const text = (await multipart.text()).replace(/-{2,}[\w-]+/g, '--B').replace(/\r\n$/, '');
+  // (the init's members read through its prototype too, as Node reads them)
+  const proto = new Request('http://x/', Object.create({ method: 'PUT', body: new w.Blob(['p']) }));
+  // (#356 review: a function as the init, and getters that read this, as
+  // with jsdom's environment)
+  const fn = Object.assign(function init() {}, { method: 'POST', body: new w.Blob(['fn'], { type: 'a/fn' }) });
+  const fnRequest = new Request('http://x/', fn);
+  const methods = new WeakMap();
+  const bound = {
+    body: new w.Blob(['m']),
+    get method() {
+      return methods.get(this);
+    },
+  };
+  methods.set(bound, 'PATCH');
+  const boundRequest = new Request('http://x/', bound);
+  const frozen = new Request('http://x/', Object.freeze({ method: 'POST', body: new w.Blob(['z'], { type: 'a/z' }) }));
+  return [
+    Request.name,
+    Request.length,
+    blob.headers.get('content-type'),
+    await blob.text(),
+    file.headers.get('content-type'),
+    await file.text(),
+    multipart.headers.get('content-type').split(';')[0],
+    text,
+    proto.method,
+    await proto.text(),
+    await post('s').text(),
+    fnRequest.headers.get('content-type'),
+    await fnRequest.text(),
+    boundRequest.method,
+    await boundRequest.text(),
+    frozen.headers.get('content-type'),
+    await frozen.text(),
+  ];
+}
+const REQUEST_BODIES = [
+  'Request',
+  0,
+  'application/octet-stream',
+  'd',
+  'text/x-f',
+  'f',
+  'multipart/form-data',
+  '--B\r\nContent-Disposition: form-data; name="a"\r\n\r\n1\r\n' +
+    '--B\r\nContent-Disposition: form-data; name="b"; filename="blob"\r\nContent-Type: text/x-b\r\n\r\nx\r\n' +
+    '--B\r\nContent-Disposition: form-data; name="c"; filename="blob"\r\nContent-Type: text/x-c\r\n\r\ny\r\n--B',
+  'PUT',
+  'p',
+  's',
+  'a/fn',
+  'fn',
+  'PATCH',
+  'm',
+  'a/z',
+  'z',
+];
+test("Vitest: Request takes the window's Blob, File and FormData bodies (#350)", async () => {
+  const { default: environment } = await import('../src/vitest.js');
+  const global = {};
+  const result = environment.setup(global);
+  try {
+    assert.deepEqual(await requestBodies(global.Request, global), REQUEST_BODIES);
+    assert.equal(new global.Request('http://x/') instanceof Request, true);
+    // (Node's Requests are its instances too, a clone's: its own @@hasInstance)
+    assert.equal(new Request('http://x/') instanceof global.Request, true);
+    assert.equal(new global.Request('http://x/').clone() instanceof global.Request, true);
+    assert.equal({} instanceof global.Request, false);
+  } finally {
+    result.teardown();
+  }
+  assert.equal('Request' in global, false);
+  const vmModule = await import('node:vm');
+  const vmResult = await environment.setupVM();
+  try {
+    const context = vmResult.getVmContext();
+    const [Vm, w] = vmModule.runInContext('[Request, window]', context);
+    assert.deepEqual(await requestBodies(Vm, w), REQUEST_BODIES);
+  } finally {
+    vmResult.teardown();
+  }
+});
+
 // Vitest's VM pools (#351): the timers are the window's, as with Vitest's
 // jsdom environment there (black box, jsdom 20 to 30 with Vitest 5:
 // numeric ids, a string handler accepted), and teardown stops them as

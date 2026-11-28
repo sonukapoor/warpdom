@@ -10,6 +10,9 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { URL as NodeURL } from 'node:url';
 import { Blob as NodeBlob } from 'node:buffer';
+
+// Node's own (the global's may be a test's mock by the time a file runs).
+const { Request: NodeRequest, FormData: NodeFormData } = globalThis;
 import { createWindow } from './node.js';
 import { S, THISLESS } from './internal.js';
 import { ablated, materializeAll } from './ablate.js';
@@ -17,6 +20,7 @@ import { setQueryCache } from './selectors.js';
 import { resetWindow, snapshotWindow } from './reset.js';
 import { HOST_TIMER_KEYS, closeFrames, closeWindowTimers, warnNewerJsdom } from './window-features.js';
 import { blobData } from './file-reader.js';
+import { formDataEntries } from './forms.js';
 import { abortWindowRequests } from './xhr.js';
 import { forgetLastList } from './collections.js';
 
@@ -112,16 +116,63 @@ function vitestURL() {
   };
 }
 
-// Defines URL on the global; returns restore() and reset().
-function installURL(global) {
-  const original = Object.getOwnPropertyDescriptor(global, 'URL');
-  const URL = vitestURL();
+// Vitest's jsdom environment's Request (#350; black box, Vitest 5, jsdom
+// 26 and 30, every pool): a subclass of Node's whose constructor takes the
+// window's Blob, File and FormData bodies, as Node's of their bytes and
+// type (a FormData's Blob and File entries as Blobs: sent with the name
+// "blob", as there). fetch() and Response are Node's: MSW and the like
+// build a Request from fetch's arguments. Node's Requests are its
+// instances (a clone is Node's). One per window, as URL.
+function vitestRequest() {
+  return class Request extends NodeRequest {
+    constructor(...args) {
+      const init = args[1];
+      if (init !== null && (typeof init === 'object' || typeof init === 'function')) {
+        // (body read once, as Node reads it first; the other members read
+        // from the init itself, own or inherited, with it as this; #356
+        // review)
+        const written = init.body;
+        const body = hostBody(written);
+        if (body !== written)
+          // (an empty target: a frozen init's body cannot be another
+          // value through a proxy of it)
+          args[1] = new Proxy({}, { get: (_, key) => (key === 'body' ? body : Reflect.get(init, key)) });
+      }
+      super(...args);
+    }
+    // (Node's Requests are its instances: a clone, one fetch() makes)
+    static [Symbol.hasInstance](value) {
+      return value instanceof NodeRequest;
+    }
+  };
+}
+// The host's body for a window's Blob, File or FormData; others as they are.
+function hostBody(body) {
+  const blob = blobData(body);
+  if (blob !== undefined) return new NodeBlob([blob.bytes], { type: blob.type });
+  const entries = formDataEntries(body);
+  if (entries === null) return body;
+  const form = new NodeFormData();
+  for (const { name, value } of entries) form.append(name, typeof value === 'string' ? value : hostBody(value));
+  return form;
+}
+
+// Defines URL and Request on the global; returns restore() and reset().
+function installClasses(global) {
+  const installed = [installClass(global, 'URL', vitestURL()), installClass(global, 'Request', vitestRequest())];
+  return {
+    restore: () => installed.forEach((c) => c.restore()),
+    reset: () => installed.forEach((c) => c.reset()),
+  };
+}
+function installClass(global, name, Class) {
+  const original = Object.getOwnPropertyDescriptor(global, name);
   const define = () =>
-    Object.defineProperty(global, 'URL', { value: URL, writable: true, enumerable: false, configurable: true });
+    Object.defineProperty(global, name, { value: Class, writable: true, enumerable: false, configurable: true });
   define();
-  const statics = new Map(Reflect.ownKeys(URL).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)]));
+  const statics = new Map(Reflect.ownKeys(Class).map((key) => [key, Object.getOwnPropertyDescriptor(Class, key)]));
   const members = new Map(
-    Reflect.ownKeys(URL.prototype).map((key) => [key, Object.getOwnPropertyDescriptor(URL.prototype, key)]),
+    Reflect.ownKeys(Class.prototype).map((key) => [key, Object.getOwnPropertyDescriptor(Class.prototype, key)]),
   );
   const put = (object, snapshot) => {
     for (const key of Reflect.ownKeys(object)) if (!snapshot.has(key)) Reflect.deleteProperty(object, key);
@@ -129,12 +180,12 @@ function installURL(global) {
   };
   return {
     restore() {
-      delete global.URL;
-      if (original) Object.defineProperty(global, 'URL', original);
+      delete global[name];
+      if (original) Object.defineProperty(global, name, original);
     },
     reset() {
-      put(URL, statics);
-      put(URL.prototype, members);
+      put(Class, statics);
+      put(Class.prototype, members);
       define();
     },
   };
@@ -563,7 +614,7 @@ export default {
       alwaysKeys: VITEST_ALWAYS_KEYS,
       unforgeable: true,
     });
-    installURL(sandbox);
+    installClasses(sandbox);
     // The global's console starts as the window's, as jsdom's does there;
     // Vitest then assigns its own (black box: a non-enumerable property
     // with every jsdom).
@@ -605,7 +656,7 @@ export default {
   setup(global, options) {
     let window = createTestWindow(options);
     let restore = installWindow(global, window, { hostKeys: VITEST_GLOBAL_HOST_KEYS, alwaysKeys: VITEST_ALWAYS_KEYS });
-    const url = installURL(global);
+    const url = installClasses(global);
     // Classic scripts run as global code of the realm the window is
     // installed in (scripts.js): an indirect eval.
     window[S].runScript = (source) => (0, eval)(source);
