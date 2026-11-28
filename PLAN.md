@@ -9512,3 +9512,8 @@ in a finally block.
 Review round 3 (#355, Copilot): a Symbol handler throws a TypeError
 ("Value is a symbol, which cannot be converted to a string."), open or
 closed window, as jsdom 20 and 30 do (black box).
+Review round 4 (#355, Copilot's summary): a BigInt timeout throws a
+TypeError ("Value is a BigInt which cannot be converted to a number."),
+open or closed window, as jsdom 30 does (black box); an object whose
+valueOf returns a BigInt is still converted, as in jsdom. Main already
+accepted a BigInt; not a regression of this branch.

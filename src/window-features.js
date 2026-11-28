@@ -179,6 +179,9 @@ function startTimer(window, repeat, handler, timeout, args) {
   // (a Symbol is no DOMString: a TypeError, as jsdom 20 and 30 throw)
   if (typeof handler === 'symbol') throw new TypeError('Value is a symbol, which cannot be converted to a string.');
   const source = typeof handler === 'function' ? null : String(handler);
+  // (nor a BigInt a long; one from valueOf is converted, black box, jsdom
+  // 30, #355 review)
+  if (typeof timeout === 'bigint') throw new TypeError('Value is a BigInt which cannot be converted to a number.');
   const ms = Number(timeout) || 0;
   const timers = ws.timers ?? (ws.timers = { next: 1, handles: new Map() });
   if (ws.timersClosed === true) return 0;

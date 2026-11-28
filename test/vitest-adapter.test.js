@@ -399,6 +399,15 @@ test("setupVM: the timers are the window's and stop at teardown (#351)", async (
       });
     symbol(frame);
     symbol(createWindow());
+    // (a BigInt timeout is no long: a TypeError; one from valueOf is
+    // converted, as jsdom 30's)
+    for (const owner of [frame, createWindow()]) {
+      assert.throws(() => owner.setTimeout(() => {}, 10n), {
+        name: 'TypeError',
+        message: 'Value is a BigInt which cannot be converted to a number.',
+      });
+      owner.clearInterval(owner.setInterval(() => {}, { valueOf: () => 10n }));
+    }
     await new Promise((resolve) => setTimeout(resolve, 80));
     assert.deepEqual(ran, []);
   } finally {
