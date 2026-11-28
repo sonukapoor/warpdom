@@ -355,6 +355,7 @@ async function requestBodies(Request, w) {
   };
   methods.set(bound, 'PATCH');
   const boundRequest = new Request('http://x/', bound);
+  const frozen = new Request('http://x/', Object.freeze({ method: 'POST', body: new w.Blob(['z'], { type: 'a/z' }) }));
   return [
     Request.name,
     Request.length,
@@ -371,6 +372,8 @@ async function requestBodies(Request, w) {
     await fnRequest.text(),
     boundRequest.method,
     await boundRequest.text(),
+    frozen.headers.get('content-type'),
+    await frozen.text(),
   ];
 }
 const REQUEST_BODIES = [
@@ -391,6 +394,8 @@ const REQUEST_BODIES = [
   'fn',
   'PATCH',
   'm',
+  'a/z',
+  'z',
 ];
 test("Vitest: Request takes the window's Blob, File and FormData bodies (#350)", async () => {
   const { default: environment } = await import('../src/vitest.js');

@@ -131,7 +131,9 @@ function vitestRequest() {
         const written = init.body;
         const body = hostBody(written);
         if (body !== written)
-          args[1] = new Proxy(init, { get: (target, key) => (key === 'body' ? body : Reflect.get(target, key)) });
+          // (an empty target: a frozen init's body cannot be another
+          // value through a proxy of it)
+          args[1] = new Proxy({}, { get: (_, key) => (key === 'body' ? body : Reflect.get(init, key)) });
       }
       super(...args);
     }

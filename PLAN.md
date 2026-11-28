@@ -9501,3 +9501,7 @@ fetch() itself is left as jsdom's environment leaves it: MSW 3.0.3's
 setupServer receives the right multipart and Blob bodies from fetch()
 with the fix, as with jsdom (it builds a Request from fetch's arguments),
 and timed out on main.
+Review round 2 (#356, both bots): the proxy's target is an empty object
+and every read but body goes to the init: a frozen init's body (a
+non-writable, non-configurable property) cannot read as another value
+through a proxy of the init itself (a TypeError before).
