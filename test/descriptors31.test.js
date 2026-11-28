@@ -201,6 +201,18 @@ const PAGE = [
   'background-image: url(/img/@2x.png); size: A4',
   'quotes: "@a" "b"; size: A4',
   'background-image: url("/a@b.png"); @top-left { content: "x" } size: A4',
+  // (width and height are properties here, not size's longhands; #354
+  // review)
+  'width: inherit; height: inherit; size: a4',
+  'width: inherit; height: inherit',
+  'size: a4; width: inherit; height: inherit',
+  'width: initial; height: initial; size: a4',
+  'width: 1px; height: 2px',
+  // (an @ inside a value's brackets starts no rule)
+  '--x: { @top-left { content: "x" } }',
+  '--x: { @top-left { content: "x" } }; @top-right { content: "y" }',
+  '--x: [ @top-left{} ]',
+  '--x: ( @top-left{} ); margin: 1px',
 ];
 const MARGIN = [
   'content: counter(page)',
@@ -223,6 +235,21 @@ parity("jsdom 31's @font-face descriptors", (w) => FONT_FACE.map((body) => [body
   jsdom: 31,
 });
 parity("jsdom 31's @page descriptors", (w) => PAGE.map((body) => [body, read(page(w.document, body))]), { jsdom: 31 });
+parity(
+  "jsdom 31's @page margin rules, at its top level only",
+  (w) =>
+    [
+      '--x: { @top-left { content: "x" } }',
+      '--x: { @top-left { content: "x" } }; @top-right { content: "y" }',
+      '--x: [ @top-left{} ]',
+      '--x: ( @top-left{} ); margin: 1px',
+      'color: red; @top-left { --y: { @bottom-left {} } }',
+    ].map((body) => {
+      const rule = sheetOf(w.document, `@page { ${body} }`).cssRules[0];
+      return [body, rule.cssText, [...rule.cssRules].map((r) => r.cssText)];
+    }),
+  { jsdom: 31 },
+);
 parity("jsdom 31's margin box descriptors", (w) => MARGIN.map((body) => [body, read(margin(w.document, body))]), {
   jsdom: 31,
 });

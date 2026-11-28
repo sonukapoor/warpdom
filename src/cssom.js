@@ -786,15 +786,21 @@ function cascadeFromCssom(rule) {
 // An @page rule's body: descriptors, and margin rules (@top-left { ... }).
 // The index of the next @ that starts a rule in a block, or -1: not one in
 // a string, comment or url (background-image: url(/img/@2x.png); #354
-// review).
+// review), nor in a value's brackets (--x: { @top-left {} }; #354 review).
 function atRuleStart(text, from) {
+  let depth = 0;
   for (let i = from; i < text.length; i++) {
     const c = text.charCodeAt(i);
-    if (c === 64) return i;
+    if (c === 64 && depth === 0) return i;
     if (c === 47 || c === 40 || c === 34 || c === 39 || c === 92) {
       const next = skipToken(text, i);
-      if (next !== i) i = next - 1;
+      if (next !== i) {
+        i = next - 1;
+        continue;
+      }
     }
+    if (c === 40 || c === 91 || c === 123) depth++;
+    else if ((c === 41 || c === 93 || c === 125) && depth > 0) depth--;
   }
   return -1;
 }

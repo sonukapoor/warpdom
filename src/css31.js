@@ -632,8 +632,10 @@ export function serialize31(decls) {
     if (shorthands !== undefined)
       for (const shorthand of shorthands) {
         // (only a shorthand the block takes: a page's border-width, not
-        // its border-style; decls.drops, css.js setDescriptorsMode)
-        if (decls.drops?.has(shorthand) === true) continue;
+        // its border-style; decls.drops, css.js setDescriptorsMode. Nor
+        // one that is a descriptor there: a page's size is no width and
+        // height shorthand; #354 review)
+        if (decls.drops?.has(shorthand) === true || decls.descriptors?.has(shorthand) === true) continue;
         const entries = [];
         for (const l of shorthandsTable()[shorthand]) {
           const e = decls.get(l);

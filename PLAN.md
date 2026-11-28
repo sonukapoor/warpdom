@@ -9730,3 +9730,15 @@ url("var(x).woff2") are kept). src drops each source with var(), a bad
 url or a closer of nothing (parse31.js badUrls: the declaration keeps
 them for descriptors31.js), and keeps the others (url(a b), url(c) is
 url("c")).
+
+Review round (#354, Copilot on 98c834c; reproduced on 31.0.1,
+2026-11-28): in an @page block `size` is a descriptor, so it is no
+shorthand of `width` and `height` there: `width: inherit; height:
+inherit; size: a4` keeps all three, where the serializer wrote `size:
+inherit`. And an `@` inside a value's brackets starts no margin rule:
+`--x: { @top-left { content: "x" } }` stays the custom property's value
+(atRuleStart counts `(`, `[` and `{`). Left for #358: jsdom 31 starts a
+margin rule only where an item starts; an `@` later in an item belongs
+to it (`junk @top-left {}` is a dropped qualified rule, `color: red
+@top-left {}` a dropped declaration). warpdom's older profiles have the
+same gap.
