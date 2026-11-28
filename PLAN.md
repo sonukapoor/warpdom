@@ -9534,3 +9534,9 @@ Copilot's closer look on round 3: the duplicate-name check went through
 the parameters read so far (quadratic): 16,000 parameters took 383 ms
 (jsdom 31: 1,150 ms). The names are a set now: 12 ms, and 16,000
 defaults 363 -> 30 ms (median of 3, Node 22.23).
+Copilot's closer look on round 4: comments before the name were read
+by a lazy comment body that could also hold a */, so a run of them had
+many readings and a prelude without a name backtracked exponentially
+(24 comments: 135 ms, 40: about a minute). The body is now one that
+cannot hold its end (linear: 5,000 comments in 1.5 ms, jsdom 31 1.1 ms;
+the same rules as jsdom 31 for runs of comments, /***/ and * / inside).

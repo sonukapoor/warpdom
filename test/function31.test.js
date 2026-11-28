@@ -331,6 +331,17 @@ test("jsdom 31's @function prelude with many escapes", () => {
   assert.ok(performance.now() - started < 500);
 });
 
+test("jsdom 31's @function prelude with many comments", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  const started = performance.now();
+  const sheet = sheetOf(d, `@function ${'/**/'.repeat(40)}{} p {} @function /**//*a*/--f() {}`);
+  assert.deepEqual(
+    [...sheet.cssRules].map((rule) => rule.name ?? rule.selectorText),
+    ['p', '--f'],
+  );
+  assert.ok(performance.now() - started < 500);
+});
+
 // A block's end at the end of the sheet, closed as parsed (#353 review;
 // jsdom 31 also reports "Could not parse CSS stylesheet" for these, which
 // warpdom does not: values measured on 31.0.1).

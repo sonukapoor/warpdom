@@ -453,7 +453,9 @@ export function propertyRuleText(data) {
 // Its data: { name, params: [{ name, syntax, defaultValue (or null) }],
 // returns (a syntax) }, or null when it is dropped; names with their
 // escapes read (CSSFunctionRule.name, getParameters(); #353 review).
-const FUNCTION_NAME = new RegExp(String.raw`^(?:[ \t\n\r\f]|\/\*[\s\S]*?\*\/)*(${IDENT})\(`);
+// (a comment's body cannot hold its end, so a run of comments is read
+// one way only: linear, #353 review)
+const FUNCTION_NAME = new RegExp(String.raw`^(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*(${IDENT})\(`);
 const PARAMETER_NAME = new RegExp(String.raw`^${IDENT}`);
 const RETURNS = /^returns(?![\w\u0080-￿\\-])/i;
 const CSS_SPACE = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g;
