@@ -4,13 +4,23 @@ import assert from 'node:assert/strict';
 import { newerJsdomWarning, NEWEST_MODELED_JSDOM } from '../src/window-features.js';
 
 test('no warning for modeled jsdom versions and patch releases of the newest', () => {
-  for (const version of ['20.0.3', '26.1.0', '29.1.1', '30.0.1', NEWEST_MODELED_JSDOM, '30.1.9', undefined, null]) {
+  for (const version of [
+    '20.0.3',
+    '26.1.0',
+    '29.1.1',
+    '30.1.3',
+    '31.0.0',
+    NEWEST_MODELED_JSDOM,
+    '31.0.9',
+    undefined,
+    null,
+  ]) {
     assert.equal(newerJsdomWarning(version), null, String(version));
   }
 });
 
 test('a warning for a newer minor or major release', () => {
-  for (const version of ['30.2.0', '31.0.0', '32.4.1']) {
+  for (const version of ['31.1.0', '32.0.0', '32.4.1']) {
     const warning = newerJsdomWarning(version);
     assert.match(warning, new RegExp(`installed jsdom ${version.replaceAll('.', '\\.')} is newer than`));
     assert.match(warning, /github\.com\/sonukapoor\/warpdom\/issues/);
@@ -18,7 +28,7 @@ test('a warning for a newer minor or major release', () => {
 });
 
 test('a version without a minor part (a major alone) does not warn', () => {
-  assert.equal(newerJsdomWarning('31'), null);
+  assert.equal(newerJsdomWarning('32'), null);
 });
 
 test('the Vitest adapter warns once when the project has a newer jsdom installed', async () => {
@@ -32,20 +42,20 @@ test('the Vitest adapter warns once when the project has a newer jsdom installed
     mkdirSync(join(root, 'node_modules/jsdom'), { recursive: true });
     writeFileSync(
       join(root, 'node_modules/jsdom/package.json'),
-      '{"name":"jsdom","version":"31.0.0","main":"index.js"}',
+      '{"name":"jsdom","version":"32.0.0","main":"index.js"}',
     );
     const warnings = [];
     const warn = console.warn;
     console.warn = (text) => warnings.push(text);
     try {
-      assert.equal(jsdomProfile({}, root).jsdom, '31.0.0');
+      assert.equal(jsdomProfile({}, root).jsdom, '32.0.0');
       jsdomProfile({}, root);
-      jsdomProfile({ warpdom: { jsdom: '31.0.0' } }, root);
+      jsdomProfile({ warpdom: { jsdom: '32.0.0' } }, root);
     } finally {
       console.warn = warn;
     }
     assert.equal(warnings.length, 1);
-    assert.match(warnings[0], /installed jsdom 31\.0\.0 is newer than/);
+    assert.match(warnings[0], /installed jsdom 32\.0\.0 is newer than/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

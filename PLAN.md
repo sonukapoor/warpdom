@@ -9742,3 +9742,23 @@ margin rule only where an item starts; an `@` later in an item belongs
 to it (`junk @top-left {}` is a dropped qualified rule, `color: red
 @top-left {}` a dropped declaration). warpdom's older profiles have the
 same gap.
+
+## 2026-11-28: jsdom 31: NEWEST_MODELED_JSDOM is 31.0.1 (branch feat/269-jsdom31-newest, #269)
+
+With parts A to F3c merged (#348 and #349 on 2026-11-26) and the API
+parts G1 (#352), G1b (#353) and G2 (#354) after them, so jsdom 31's
+interfaces and members are all in the 31 profile (the 2026-11-27
+decision),
+NEWEST_MODELED_JSDOM moves from 30.1.3 to 31.0.1. The 31 profile was
+already chosen for an installed jsdom 31 (window-features.js, version
+>= 31); the constant decides the warning for a newer jsdom and the
+upstream watch, so jsdom 31.0.x no longer warns, 31.1 and 32 do. README,
+docs/stability.md and docs/jsdom-versions.md say 31.0.1; the last lists
+what is not yet modeled for 31.
+
+Not yet modeled (decided 2026-11-26, each its own PR later): relative
+colors (rgb(from ...)); math results clamped to the property's range;
+hypot() computed; trig, sign() and abs() simplified when declared (the
+F3c review notes). Not run for this change: the version corpus
+(dom-api-tracer, mode versions) on jsdom 31; the next corpus timing run
+covers it.

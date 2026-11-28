@@ -49,7 +49,7 @@ function parseJsdomVersion(version) {
 // The newest jsdom release the profiles were measured against. A later
 // minor or major release may change behavior warpdom does not reproduce;
 // patch releases are taken to keep it.
-export const NEWEST_MODELED_JSDOM = '30.1.3';
+export const NEWEST_MODELED_JSDOM = '31.0.1';
 
 // The warning for an installed jsdom newer than NEWEST_MODELED_JSDOM, else null.
 export function newerJsdomWarning(version) {

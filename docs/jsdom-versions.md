@@ -5,12 +5,14 @@ installs (and, for jsdom 26 and earlier, the cssstyle version it loads),
 or the one you set with the `jsdom` option; how it is chosen is in the
 README, [Which jsdom warpdom behaves like](../README.md#which-jsdom-warpdom-behaves-like).
 This page lists what differs between versions, as measured on jsdom's
-releases. warpdom models jsdom 20.0.3 to 30.1.3. jsdom 31 is in progress
-([#269](https://github.com/sonukapoor/warpdom/issues/269)): the changes
-below marked 31.0.0 are modeled (measured on 31.0.1). Of its styles, the
-declaration block model and part of the computed values are (below);
-declared values, the rest of the computed styles and the CSSOM still
-behave as in jsdom 30.
+releases. warpdom models jsdom 20.0.3 to 31.0.1; the changes below
+marked 31.0.0 were measured on 31.0.1
+([#269](https://github.com/sonukapoor/warpdom/issues/269)). Not yet
+modeled for jsdom 31: relative colors (`rgb(from red r g b)`, which
+jsdom 31 computes as `color(srgb 1 0 0)`); a math result clamped to the
+property's range (`width: calc(-1px)` computes as `0px` in jsdom 31);
+`hypot()` in computed values; and trigonometric functions, `sign()` and
+`abs()` simplified in declared values.
 
 Deliberate differences from jsdom are in
 [differences.md](differences.md).

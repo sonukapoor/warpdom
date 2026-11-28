@@ -46,7 +46,7 @@ Not breaking:
 
 ## jsdom versions
 
-warpdom models jsdom 20.0.3 to 30.1.3 (`NEWEST_MODELED_JSDOM` in
+warpdom models jsdom 20.0.3 to 31.0.1 (`NEWEST_MODELED_JSDOM` in
 [src/window-features.js](../src/window-features.js)) and follows the jsdom
 (and, for jsdom 26 and earlier, the cssstyle) each project installs, or the
 version set with the `jsdom` option.
