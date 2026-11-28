@@ -9540,3 +9540,22 @@ many readings and a prelude without a name backtracked exponentially
 (24 comments: 135 ms, 40: about a minute). The body is now one that
 cannot hold its end (linear: 5,000 comments in 1.5 ms, jsdom 31 1.1 ms;
 the same rules as jsdom 31 for runs of comments, /***/ and * / inside).
+Copilot's closer look on 36b3fad (escaped at-keywords, escaped comment
+openers; reproduced on 31.0.1, 18 of 28 probes differed):
+- jsdom 31 reads an at-keyword's escapes, for every rule (@\6d edia is
+  @media, @f\75nction @function, @prop\65rty @property; @m\65dia is no
+  @media: \65d is one escape). warpdom read [\w-]+ only, so these were
+  dropped (on main too, for the rules before G1b). The 31 profile now
+  reads the at-keyword with its escapes where records are made (cssom.js
+  RAW_AT, also for the newer rules' check); the older profiles keep
+  theirs (jsdom 30 drops them all).
+- A default's comments are dropped as an initial value's (a/*b*/c is ac,
+  1/*b*/2 12), and an escape keeps a /* from opening one (\/* x */ is
+  kept); the name and type are read with comments blanked to their
+  length, the default from the text as written. An @function's result
+  is read as written too (parse31.js: no property is named result), so
+  result: a/*b*/c is ac.
+- An unquoted url in an initial value, default or result has its escapes
+  read and is written again (url(\61) is url(a), url(\28) url(\(), url(\9)
+  url(\9 ), URL( url(); @property's initial-value had the same gap (on
+  main too). The new regexes are linear (50,000 escapes: 4 to 24 ms).

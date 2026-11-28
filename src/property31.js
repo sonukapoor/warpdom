@@ -123,9 +123,8 @@ export function initialText31(text, keepComments) {
     if (m[2] !== undefined && !keepComments) continue;
     let piece = m[0];
     if (m[3] !== undefined) piece = cssString(stringValue(piece));
-    // (url( a.png ) is url(a.png))
-    else if (m[4] !== undefined)
-      piece = `${piece.slice(0, 4)}${piece.slice(4).replace(/\)$/, '').replace(CSS_SPACE, '')})`;
+    // (url( a.png ) is url(a.png), URL( url()
+    else if (m[4] !== undefined) piece = `url(${urlText(piece)})`;
     // (a number, with its unit: 1E1PX is 10px; a1 is a name)
     // (its unit's escapes read: 2p\78 is 2px; #345 review)
     else if (m[5] !== undefined) piece = String(Number(m[5])) + unitText(m[6]);
@@ -135,6 +134,24 @@ export function initialText31(text, keepComments) {
     if (space && out !== '' && !OPENS.has(out[out.length - 1]) && !CLOSES.has(piece)) out += ' ';
     space = false;
     out += piece;
+  }
+  return out;
+}
+// An unquoted url's contents as jsdom 31 writes them (black box, 31.0.1;
+// #353 review): its escapes read (url(\61) is url(a)), then a space, a
+// parenthesis, a quote and a backslash escaped, a control character as
+// its code point (url(\9) is url(\9 )); spaces around them dropped. A
+// hex escape is all its digits, and the one space after it its own.
+const URL_CONTENTS =
+  /^[ \t\n\r\f]*((?:[^\\ \t\n\r\f)]|\\(?:[0-9a-fA-F]{1,6}(?![0-9a-fA-F])(?:\r\n|[ \t\n\r\f])?|[^0-9a-fA-F]))*)/;
+const URL_ESCAPED = new Set([' ', '(', ')', '"', "'", '\\']);
+function urlText(token) {
+  const read = readEscapes(URL_CONTENTS.exec(token.slice(4))[1]);
+  let out = '';
+  for (const c of read) {
+    const cp = c.codePointAt(0);
+    if (cp < 0x20 || cp === 0x7f) out += `\\${cp.toString(16)} `;
+    else out += URL_ESCAPED.has(c) ? `\\${c}` : c;
   }
   return out;
 }

@@ -127,12 +127,45 @@ const BLOCKS = [
   '@layer x { @function --f() {} }',
   '@function --f() {} @function --f() {} p { color: red }',
 ];
+// (#353 review: escaped at-keywords, comments in defaults and results,
+// escapes before a /*, escapes in unquoted urls; @property's initial-value
+// is written the same way)
+const ESCAPES = [
+  '@f\\75nction --f() {} p {}',
+  '@\\66unction --f() {}',
+  '@FUNC\\54ION --f() {}',
+  '@function\\41 --f() {} p {}',
+  '@functionä --f() {} p {}',
+  '@prop\\65rty --x { syntax: "*"; inherits: false }',
+  '@\\73 cope (.a) { p {} }',
+  '@scope\\41 (.a) {} p {}',
+  '@st\\61rting-style { p {} }',
+  '@\\6d edia print { p {} } @m\\65dia print { p {} }',
+  '@supp\\6frts (color: red) { p {} } @l\\61yer x; @k\\65yframes k { from {} }',
+  '@\\69mport "x.css"; @p\\61ge { margin: 1px } @-webkit-k\\65yframes k { from {} }',
+  '@position-tr\\79 --p { top: 1px } @font-palette-v\\61lues --p { font-family: a }',
+  '@function --f(--a: a/*b*/c) {}',
+  '@function --f(--a: 1/*b*/2) {}',
+  '@function --f(--a: a /*b*/c) {}',
+  '@function --f(--a: a\\\\/*b*/c) {}',
+  '@function --f(--a: \\/* x */ 1) {}',
+  '@function --f(--a: a\\/*b*/c) {}',
+  '@function --f(--a /**/ <length> /**/ : /**/ 1px /**/) {}',
+  '@function --f() { result: a/*b*/c; --y: a/*b*/c }',
+  '@function --f(--a: url(\\61) url( \\62 )) {}',
+  '@function --f(--a type(<url>): url(\\61)) {}',
+  '@function --f(--a: url(\\/*x*/)) {}',
+  '@function --f() { --y: url(\\61); result: url(\\62 c) }',
+  '@function --f(--a: URL(a\\)b) url(a\\ b) url(\\28) url(\\5c) url(\\9 ) url(\\7f) url(\\20) url(\\0)) {}',
+  '@property --x { syntax: "*"; inherits: false; initial-value: url(\\61) url(\\/x) url(a\\"b) url(\\61  ) }',
+];
 
 for (const [name, texts] of [
   ['preludes', PRELUDES],
   ['parameter and return types', TYPES],
   ['parameter defaults', DEFAULTS],
   ['blocks', BLOCKS],
+  ['escapes and comments', ESCAPES],
 ])
   parity(
     `jsdom 31's @function ${name}`,

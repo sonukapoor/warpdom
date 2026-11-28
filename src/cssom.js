@@ -56,7 +56,7 @@ import {
 import { cssomDeclaration, cssomEntries, blockEntries, simpleText, withoutComments } from './cssom-declaration.js';
 import { liveList, iterate } from './collections.js';
 import { fallbackBaseURL } from './base-url.js';
-import { urlTokenEnd } from './css-values.js';
+import { readEscapes, urlTokenEnd } from './css-values.js';
 import { compileRuleSelector, matchText31, ruleSelector31, scopeSelector31, supportsSelector31 } from './selectors.js';
 import { addAttributeStep } from './attributes.js';
 import {
@@ -222,10 +222,14 @@ export function parseRules(text, strict = false, nested = false, css31 = false, 
       i = end + 1;
     }
     if (prelude[0] === '@') {
-      const m = /^@([\w-]+)\s*/.exec(prelude);
+      // (jsdom 31 reads the at-keyword's escapes: @\6d edia is @media;
+      // #353 review)
+      const m = (css31 ? RAW_AT : /^@([\w-]+)/).exec(prelude);
+      let at = null;
+      if (m !== null) at = css31 ? atName(m) : m[1].toLowerCase();
       // (raw: the prelude with its comments, which separate font family
       // names; rules31.js)
-      if (m) records.push({ at: m[1].toLowerCase(), prelude: prelude.slice(m[0].length).trim(), body, raw });
+      if (m) records.push({ at, prelude: prelude.slice(m[0].length).trim(), body, raw });
       else if (strict) records.push({ invalid: true });
     } else if (body !== null && prelude !== '') {
       records.push({ selector: prelude, body, raw });
@@ -1001,7 +1005,7 @@ function createRule(protos, record, sheet, parentRule) {
       // (an at-rule whose name only starts with scope is not one: @scopeé,
       // @scope\41; #348 review)
       const keyword = RAW_AT.exec(record.raw);
-      if (keyword === null || keyword[1].toLowerCase() !== 'scope') return null;
+      if (keyword === null || atName(keyword) !== 'scope') return null;
       const parts = scopePrelude31(cssTrim(record.raw.slice(keyword[0].length)));
       if (parts === null) return null;
       rule = makeRule(protos, 'CSSScopeRule', sheet, parentRule, parts);
@@ -1064,7 +1068,7 @@ function createRule(protos, record, sheet, parentRule) {
     // written, where a comment separates tokens: @font-feature-values/**/A
     // is the family A, --a/**/b two names; #344 review)
     const m = RULES31.has(protos.CSSRule) && body !== null ? RAW_AT.exec(record.raw) : null;
-    const make = m === null ? null : newerRule31(m[1].toLowerCase());
+    const make = m === null ? null : newerRule31(atName(m));
     // (else @charset and unknown at-rules)
     return make === null ? null : make(protos, record.raw.slice(m[0].length), body, sheet, parentRule);
   }
@@ -1166,8 +1170,12 @@ function functionDeclarations(protos, text, sheet, parent) {
 
 // (the whole at-keyword: a name character or an escape after it makes
 // another name, so @font-feature-valuesé and @font-feature-values\41 are
-// unknown rules; #344 review)
-const RAW_AT = /^@([\w-]+)(?![\w\u0080-\uffff\\-])/;
+// unknown rules; #344 review. Its escapes are read: @f\75nction is
+// @function, as jsdom 31 reads them; #353 review. A hex escape is all its
+// digits, so the name is read one way only.)
+const RAW_AT =
+  /^@((?:[\w\u0080-\uffff-]|\\(?:[0-9a-fA-F]{1,6}(?![0-9a-fA-F])(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F]))+)/;
+const atName = (m) => readEscapes(m[1]).replace(/[A-Z]+/g, (c) => c.toLowerCase());
 const newerRule31 = (at) => (Object.hasOwn(NEWER_RULES31, at) ? NEWER_RULES31[at] : null);
 
 // The own length getter and indexed getters of a CSSKeyframesRule in jsdom

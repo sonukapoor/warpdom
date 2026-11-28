@@ -461,11 +461,18 @@ const RETURNS = /^returns(?![\w\u0080-￿\\-])/i;
 const CSS_SPACE = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g;
 const cssTrim = (text) => text.replace(CSS_SPACE, '');
 // (comments as spaces, those in strings and unquoted urls kept: url(a/*b)
-// is one url; #353 review)
+// is one url, and none after an escape: \/* is no comment; #353 review)
+// (blank: a comment as spaces of its length, so the text's offsets hold)
 const COMMENT_OR_STRING =
-  /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|(\burl\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?)|\/\*[\s\S]*?(?:\*\/|$)/gi;
-const withoutComments = (text) =>
-  text.includes('/*') ? text.replace(COMMENT_OR_STRING, (m, string, url) => string ?? url ?? ' ') : text;
+  /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|(\burl\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?)|(\\[\s\S])|\/\*[\s\S]*?(?:\*\/|$)/gi;
+const withoutComments = (text, blank = false) =>
+  text.includes('/*')
+    ? text.replace(
+        COMMENT_OR_STRING,
+        (m, string, url, escape) => string ?? url ?? escape ?? (blank ? ' '.repeat(m.length) : ' '),
+      )
+    : text;
+const LEADING_SPACE = /^[ \t\n\r\f]*/;
 
 const CLOSER = { '(': ')', '[': ']', '{': '}' };
 // The index of a comment's last character (its /), or the text's last.
@@ -546,8 +553,12 @@ function cssType(text) {
   return syntax !== null && syntax.parts.length === 1 ? syntax : null;
 }
 
+// (the name and type without comments, the default as written: its
+// comments dropped as an initial value's, a/*b*/c is ac; #353 review)
 function functionParameter(piece) {
-  const text = cssTrim(withoutComments(piece));
+  const blanked = withoutComments(piece, true);
+  const lead = LEADING_SPACE.exec(blanked)[0].length;
+  const text = blanked.slice(lead);
   const m = PARAMETER_NAME.exec(text);
   const name = m === null ? null : decodedName(m[0]);
   if (name === null || name === '--') return null;
@@ -557,7 +568,7 @@ function functionParameter(piece) {
   const syntax = typeText === '' ? UNIVERSAL : cssType(typeText);
   if (syntax === null) return null;
   if (colon === -1) return { name, syntax, defaultValue: null };
-  const raw = cssTrim(rest.slice(colon + 1));
+  const raw = cssTrim(piece.slice(lead + m[0].length + colon + 1));
   // (and a value: a bad url or string is none, url(a b); #353 review)
   if (raw === '' || topLevelStop(raw) || parseValue31(raw, true) === null) return null;
   const value = initialText31(raw, false);

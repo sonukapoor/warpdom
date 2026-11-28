@@ -514,11 +514,14 @@ function declaration(text, from, to, closing) {
   }
   const name = decode(text, START[from], END[from]);
   const custom = name.startsWith('--');
+  // (an @function's result as written too: css.js writes it as an initial
+  // value, a/*b*/c is ac; no property has the name; #353 review)
+  const written = custom || withVar || (name.length === 6 && name.toLowerCase() === 'result');
   let value = '';
   if (last >= first) {
     // (a value with var() keeps its comments as written, as a custom
     // property's: var(--a /*b*/ c); #327 review)
-    if (custom || withVar || (plain && firstSlash(text, START[first], END[last]) === -1))
+    if (written || (plain && firstSlash(text, START[first], END[last]) === -1))
       value = text.slice(START[first], END[last]);
     else
       // (a comment between two components is a space, else nothing:
@@ -534,7 +537,7 @@ function declaration(text, from, to, closing) {
       }
     // (a string and the blocks left open, closed: only when the value
     // runs to the end; "a b is "a b")
-    if (to === count && !important) value = closedAtEnd(text, last, value, custom || withVar) + closing;
+    if (to === count && !important) value = closedAtEnd(text, last, value, written) + closing;
   }
   const empty = custom && value === '';
   let raw = null;
