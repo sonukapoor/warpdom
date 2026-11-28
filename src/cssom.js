@@ -1525,12 +1525,12 @@ function insertRule31(owner, text, i, sheet, parentRule, nested) {
 // @container rule; another rule is a HierarchyRequestError.
 function insertFunctionRule31(owner, text, i, sheet, parentRule) {
   const s = owner[S];
+  // (read as declarations first: a rule before them is junk up to the
+  // semicolon and an at-rule among them is dropped, so "@media print{}
+  // --x: 1" inserts --x; with no declaration, as one rule; #353 review)
   let rule = null;
-  if (cssTrim(text)[0] !== '@') {
-    const items = parseBlockContents31(text, 'result');
-    if (items.length !== 0 && items.every((item) => item.decl !== null))
-      rule = functionDeclarations(s.protos, text, sheet, parentRule);
-  }
+  if (parseBlockContents31(text, 'result').some((item) => item.decl !== null))
+    rule = functionDeclarations(s.protos, text, sheet, parentRule);
   if (rule === null) {
     const records = parseRules(text, true, nestedBlocks(s.protos), true, false);
     if (records.length === 0) throw domError('Cannot parse missing rule', 'SyntaxError');

@@ -319,7 +319,25 @@ parity(
       '@function --f(--a\\:b, --a\\3a b) {}',
     ])
       out.push([text, [...sheetOf(d, text).cssRules].map(describe)]);
-    for (const text of ['p {} --x: 1', '--x: 1; p {}', '--x: 1 p {}', 'a:hover{} --x: 1']) {
+    for (const text of [
+      'p {} --x: 1',
+      '--x: 1; p {}',
+      '--x: 1 p {}',
+      'a:hover{} --x: 1',
+      // (a rule before declarations is junk up to the semicolon, and an
+      // at-rule among them is dropped; the declarations still go in)
+      'p {} --x: 1; --y: 2',
+      '@media print{} --x:1; --y:2',
+      '@media print{--x:1} --y:2',
+      '@media print{};--x:1',
+      '@foo; --x:1',
+      '@layer a; --x:1',
+      '@function --g(){} result:2',
+      '--x:1; @media print{}',
+      '--x:1; @media print{} --y:2',
+      '@media print{} --x',
+      '@media print{} p{}',
+    ]) {
       const rule = sheetOf(d, '@function --f() { result: 1 }').cssRules[0];
       try {
         rule.insertRule(text, 0);

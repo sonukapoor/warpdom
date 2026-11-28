@@ -9599,6 +9599,17 @@ Review round on d07514a (Copilot's closer look; reproduced on 31.0.1):
   (at most 37 ms); the quadratic one was initialText31's, fixed in
   d07514a.
 
+Review round (#353, Copilot's summary on c8c0452: "insertRule accepts a
+qualified rule before a second declaration"). That is jsdom 31's
+behavior: an @function's insertRule reads its text as declarations
+first, so in `p {} --x: 1; --y: 2` the rule is junk up to the semicolon
+and `--y` goes in. The probe found a real gap next to it: an at-rule
+before the declarations (`@media print{} --x: 1`, `@layer a; --x: 1`) is
+dropped there and the declarations inserted, where warpdom threw. The
+declaration attempt now runs for text starting with `@` too, and takes
+the list when one item is a declaration; with none, the text is one
+rule as before. 0 of 40 probe shapes differ.
+
 ## 2026-11-27: Vitest VM pools: the window's timers, a closed window at teardown (branch fix/351-vm-timers, #351)
 
 Reported by an outside user (#351): in the VM pools (vmThreads,
