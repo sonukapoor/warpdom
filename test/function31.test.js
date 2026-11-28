@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parity } from './parity.js';
 import { createWindow } from '../src/node.js';
+import { functionPrelude31 } from '../src/rules31.js';
 
 const attempt = (f) => {
   try {
@@ -127,12 +128,52 @@ const BLOCKS = [
   '@layer x { @function --f() {} }',
   '@function --f() {} @function --f() {} p { color: red }',
 ];
+// (#353 review: escaped at-keywords, comments in defaults and results,
+// escapes before a /*, escapes in unquoted urls; @property's initial-value
+// is written the same way)
+const ESCAPES = [
+  '@f\\75nction --f() {} p {}',
+  '@\\66unction --f() {}',
+  '@FUNC\\54ION --f() {}',
+  '@function\\41 --f() {} p {}',
+  '@functionä --f() {} p {}',
+  '@prop\\65rty --x { syntax: "*"; inherits: false }',
+  '@\\73 cope (.a) { p {} }',
+  '@scope\\41 (.a) {} p {}',
+  '@st\\61rting-style { p {} }',
+  '@\\6d edia print { p {} } @m\\65dia print { p {} }',
+  '@supp\\6frts (color: red) { p {} } @l\\61yer x; @k\\65yframes k { from {} }',
+  '@\\69mport "x.css"; @p\\61ge { margin: 1px } @-webkit-k\\65yframes k { from {} }',
+  '@position-tr\\79 --p { top: 1px } @font-palette-v\\61lues --p { font-family: a }',
+  '@\\00006dedia print { p {} } @\\000066\\000075nction --f(--a: url(\\000061bc.png)) { result: url(\\000062c) }',
+  '@property --x { syntax: "*"; inherits: false; initial-value: url(\\0000611) }',
+  '@function --f(--a: /**/) {} @function --g(--a:/*x*/ /**/) {} @function --h(--a: /**/1) {}',
+  '@med/**/ia print { p {} } @supp/**/orts (color: red) { p {} } @lay/**/er x; @/**/media print { q {} }',
+  '@media/**/print { p {} } @supports/**/(color: red) { p {} } @layer/**/x; @keyframes/**/k { from {} }',
+  '@supports (color: red)  { p {} } @supp\\6f rts (color: red)  { p {} }',
+  '@container (width > 0)  { p {} } @supports (color: red) { q {} }',
+  '@function --f(--a: a/*b*/c) {}',
+  '@function --f(--a: 1/*b*/2) {}',
+  '@function --f(--a: a /*b*/c) {}',
+  '@function --f(--a: a\\\\/*b*/c) {}',
+  '@function --f(--a: \\/* x */ 1) {}',
+  '@function --f(--a: a\\/*b*/c) {}',
+  '@function --f(--a /**/ <length> /**/ : /**/ 1px /**/) {}',
+  '@function --f() { result: a/*b*/c; --y: a/*b*/c }',
+  '@function --f(--a: url(\\61) url( \\62 )) {}',
+  '@function --f(--a type(<url>): url(\\61)) {}',
+  '@function --f(--a: url(\\/*x*/)) {}',
+  '@function --f() { --y: url(\\61); result: url(\\62 c) }',
+  '@function --f(--a: URL(a\\)b) url(a\\ b) url(\\28) url(\\5c) url(\\9 ) url(\\7f) url(\\20) url(\\0)) {}',
+  '@property --x { syntax: "*"; inherits: false; initial-value: url(\\61) url(\\/x) url(a\\"b) url(\\61  ) }',
+];
 
 for (const [name, texts] of [
   ['preludes', PRELUDES],
   ['parameter and return types', TYPES],
   ['parameter defaults', DEFAULTS],
   ['blocks', BLOCKS],
+  ['escapes and comments', ESCAPES],
 ])
   parity(
     `jsdom 31's @function ${name}`,
@@ -278,7 +319,25 @@ parity(
       '@function --f(--a\\:b, --a\\3a b) {}',
     ])
       out.push([text, [...sheetOf(d, text).cssRules].map(describe)]);
-    for (const text of ['p {} --x: 1', '--x: 1; p {}', '--x: 1 p {}', 'a:hover{} --x: 1']) {
+    for (const text of [
+      'p {} --x: 1',
+      '--x: 1; p {}',
+      '--x: 1 p {}',
+      'a:hover{} --x: 1',
+      // (a rule before declarations is junk up to the semicolon, and an
+      // at-rule among them is dropped; the declarations still go in)
+      'p {} --x: 1; --y: 2',
+      '@media print{} --x:1; --y:2',
+      '@media print{--x:1} --y:2',
+      '@media print{};--x:1',
+      '@foo; --x:1',
+      '@layer a; --x:1',
+      '@function --g(){} result:2',
+      '--x:1; @media print{}',
+      '--x:1; @media print{} --y:2',
+      '@media print{} --x',
+      '@media print{} p{}',
+    ]) {
       const rule = sheetOf(d, '@function --f() { result: 1 }').cssRules[0];
       try {
         rule.insertRule(text, 0);
@@ -291,6 +350,85 @@ parity(
   },
   { jsdom: 31 },
 );
+
+// (#353 review round 3: reproduced on 31.0.1) Quoted urls with spaces
+// after url(, a ; in brackets in a default, NUL (U+FFFD in names and
+// defaults, kept as written in custom properties).
+parity(
+  "jsdom 31's @function: quoted urls, nested semicolons, NUL",
+  (w) => {
+    const d = w.document;
+    const nul = String.fromCharCode(0);
+    return [
+      '@function --f(--a: url( "a)b")) {}',
+      '@function --f(--a: url( "a)b")) { result: 1 }',
+      '@function --f(--a: url( "x/*y*/z") /* c */) {}',
+      '@function --f(--a: f(1; 2)) {}',
+      '@function --f(--a: [1; 2]) {}',
+      '@function --f(--a <length>: f(1; 2)) {}',
+      '@function --f(--a: {1; 2}) {}',
+      `@function --f() { --x: url(a${nul}b); result: 2 }`,
+      `@function --f() { result: url(a${nul}b) }`,
+      `@function --f() { --a${nul}b: 1 }`,
+      `@function --f(--a: url(a${nul}b)) {}`,
+      `@function --f(--a${nul}b) {}`,
+      `@function --f${nul}() {}`,
+      '@function --\\70() {}',
+      '@function --f\\6f o() {}',
+    ].map((text) => [text, [...sheetOf(d, text).cssRules].map(describe)]);
+  },
+  { jsdom: 31 },
+);
+
+// A name of many hex escapes and no ( is rejected in linear time (#353
+// review: each escape takes all its hex digits, one way to read it).
+test("jsdom 31's @function prelude with many escapes", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  const started = performance.now();
+  const sheet = sheetOf(d, `@function --${'\\616161'.repeat(40)} x {} p {}`);
+  assert.equal(sheet.cssRules.length, 1);
+  assert.ok(performance.now() - started < 500);
+});
+
+// (an escaped url name read as url, its brackets no brackets: jsdom 31
+// writes url(a[b.png); the sheet's splitter does not read the name yet,
+// #358; #353 review)
+test("jsdom 31's @function prelude with an escaped url name", () => {
+  for (const name of ['u\\72l', 'U\\52L', '\\75rl'])
+    assert.equal(functionPrelude31(`--f(--a: ${name}( a[b.png ))`).params[0].defaultValue, 'url(a[b.png)');
+  assert.equal(functionPrelude31('--f(--a: u\\72lx(a[b.png))'), null);
+});
+
+test("jsdom 31's @function defaults with many urls and escapes", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  const started = performance.now();
+  const sheet = sheetOf(
+    d,
+    `@function --f(--a: ${'url(x) '.repeat(80000)}) {} @function --g(--a: ${'u\\72 '.repeat(20000)}) {}`,
+  );
+  assert.equal(sheet.cssRules.length, 2);
+  assert.ok(performance.now() - started < 1000);
+});
+
+test("jsdom 31's @function typed defaults with many relative lengths", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  const started = performance.now();
+  const sheet = sheetOf(d, `@function --f(--a <length>+: ${'1em '.repeat(80000)}) {}`);
+  assert.equal(sheet.cssRules.length, 1);
+  assert.equal(sheet.cssRules[0].getParameters().length, 1);
+  assert.ok(performance.now() - started < 1000);
+});
+
+test("jsdom 31's @function prelude with many comments", () => {
+  const d = createWindow({ jsdom: '31.0.1' }).document;
+  const started = performance.now();
+  const sheet = sheetOf(d, `@function ${'/**/'.repeat(40)}{} p {} @function /**//*a*/--f() {}`);
+  assert.deepEqual(
+    [...sheet.cssRules].map((rule) => rule.name ?? rule.selectorText),
+    ['p', '--f'],
+  );
+  assert.ok(performance.now() - started < 500);
+});
 
 // A block's end at the end of the sheet, closed as parsed (#353 review;
 // jsdom 31 also reports "Could not parse CSS stylesheet" for these, which

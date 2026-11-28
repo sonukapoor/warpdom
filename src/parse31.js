@@ -21,6 +21,7 @@
 // parseDeclarationList31(text) returns [{ name, value, important, custom,
 // empty }] (name as read, not lowercased; value as text for the rules
 // after it).
+import { preprocessCss, preprocessMap } from './internal.js';
 
 // --- Tokens, in arrays reused from call to call (no object per token):
 // TYPE[k], START[k] and END[k] (the source span), CLOSED[k] (a string or
@@ -398,8 +399,13 @@ export function parseDeclarationList31(text, atRules, anyValue, badUrls = null) 
 // up to its ;, or { rule: the at-rule's text }. Other rules and
 // statements are dropped. Custom properties and anyValue (a name in
 // lowercase) take {} blocks in their values.
-export function parseBlockContents31(text, anyValue) {
+export function parseBlockContents31(written, anyValue) {
   badUrlsIn = null;
+  // (read preprocessed, NUL as U+FFFD; each item's text as written, NUL
+  // kept in a custom property's value; #353 review)
+  const text = preprocessCss(written);
+  const map = text === written ? null : preprocessMap(written);
+  const raw = (from, to) => (map === null ? text.slice(from, to) : written.slice(map[from], map[to]));
   tokenize(text);
   keepRaw = false;
   const out = [];
@@ -418,12 +424,12 @@ export function parseBlockContents31(text, anyValue) {
     }
     if (end === -1) {
       end = atRuleEnd(text, k);
-      if (type === AT) out.push({ decl: null, rule: text.slice(START[k], end < count ? END[end] : text.length) });
+      if (type === AT) out.push({ decl: null, rule: raw(START[k], end < count ? END[end] : text.length) });
       k = end + 1;
       continue;
     }
     const decl = declaration(text, k, end, end === count && depth > 0 ? closers() : '');
-    if (decl !== null) out.push({ decl, text: text.slice(START[k], end < count ? START[end] : text.length) });
+    if (decl !== null) out.push({ decl, text: raw(START[k], end < count ? START[end] : text.length) });
     k = end + 1;
   }
   return out;
@@ -520,11 +526,14 @@ function declaration(text, from, to, closing) {
   }
   const name = decode(text, START[from], END[from]);
   const custom = name.startsWith('--');
+  // (an @function's result as written too: css.js writes it as an initial
+  // value, a/*b*/c is ac; no property has the name; #353 review)
+  const written = custom || withVar || (name.length === 6 && name.toLowerCase() === 'result');
   let value = '';
   if (last >= first) {
     // (a value with var() keeps its comments as written, as a custom
     // property's: var(--a /*b*/ c); #327 review)
-    if (custom || withVar || (plain && firstSlash(text, START[first], END[last]) === -1))
+    if (written || (plain && firstSlash(text, START[first], END[last]) === -1))
       value = text.slice(START[first], END[last]);
     else
       // (a comment between two components is a space, else nothing:
@@ -540,7 +549,7 @@ function declaration(text, from, to, closing) {
       }
     // (a string and the blocks left open, closed: only when the value
     // runs to the end; "a b is "a b")
-    if (to === count && !important) value = closedAtEnd(text, last, value, custom || withVar) + closing;
+    if (to === count && !important) value = closedAtEnd(text, last, value, written) + closing;
   }
   const empty = custom && value === '';
   let raw = null;

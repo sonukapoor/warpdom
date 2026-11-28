@@ -15,6 +15,7 @@ import {
   attributesChanged,
   hooks,
   preprocessCss,
+  preprocessMap,
 } from './internal.js';
 import { STYLE_ACCESSORS } from './css-properties.js';
 import { SURFACES } from './style-surface.js';
@@ -4493,17 +4494,6 @@ function parseInto(decls, text, mode, surface = null, context = null, element = 
   if (counting) decls.plain = !unnamed && (named === decls.size || (!prioritized && plainNames(names)));
 }
 
-// Where each character of preprocessCss(text) is in text (one more for
-// its end): a CR LF is one character there.
-function preprocessMap(text) {
-  const map = [];
-  for (let i = 0; i < text.length; i++) {
-    map.push(i);
-    if (text[i] === '\r' && text[i + 1] === '\n') i++;
-  }
-  map.push(text.length);
-  return map;
-}
 // How much of slice (a preprocessed value as the parser saw it) value
 // begins with: all of it, or all but a backslash at its end that closing
 // dropped or read as U+FFFD; -1 for neither.

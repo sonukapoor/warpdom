@@ -9512,13 +9512,164 @@ declaration at the end of a sheet keeps the value the parser closed
 resolved in dimension tokens only (type(item1em): item1em is kept); the
 prelude's commas and brackets in comments are not its own (--f(/* , */
 --a) has one parameter). Not changed: insertRule() of a style rule and
-declarations (p {} --x: 1) already throws a SyntaxError, as in jsdom.
+declarations (`p {} --x: 1`) already throws a SyntaxError, as in jsdom.
 
 Review round 2 (#353, Copilot; reproduced on 31.0.1): an unquoted url
-in the prelude is one token (url(a[b.png), url(a/*b.png), url(a;v.png)
-are defaults, url(a/*x*/b) kept as written); a default is a value
-(url(a b) drops the rule); name and getParameters() give names with
-their escapes read (--f\:x is --f:x), cssText writes them escaped.
+in the prelude is one token (`url(a[b.png)`, `url(a/*b.png)`,
+`url(a;v.png)` are defaults, `url(a/*x*/b)` kept as written); a default
+is a value (`url(a b)` drops the rule); `name` and `getParameters()` give
+names with their escapes read (`--f\:x` is `--f:x`), `cssText` writes
+them escaped.
+
+Review round 3 (#353, both bots; reproduced on 31.0.1, 2026-11-27): a
+quoted url with spaces after url( is quoted (url( "a)b") is a default;
+the quote is checked before the spaces are read); a ; in brackets in a
+default is part of it (f(1; 2), [1; 2]); the prelude and the block are
+read preprocessed (NUL is U+FFFD in names, result and defaults; a custom
+property's value keeps it as written, as in style rules; preprocessMap
+moved to internal.js for both). A hex escape in a name takes all its
+digits (up to six): the name pattern had many ways to read \61a, and
+a prelude of 20 such escapes with no ( took 36 s to reject; now linear
+(test: 40 escapes under 500 ms).
+Copilot's closer look on round 3: the duplicate-name check went through
+the parameters read so far (quadratic): 16,000 parameters took 383 ms
+(jsdom 31: 1,150 ms). The names are a set now: 12 ms, and 16,000
+defaults 363 -> 30 ms (median of 3, Node 22.23).
+Copilot's closer look on round 4: comments before the name were read
+by a lazy comment body that could also hold a `*/`, so a run of them had
+many readings and a prelude without a name backtracked exponentially
+(24 comments: 135 ms, 40: about a minute). The body is now one that
+cannot hold its end (linear: 5,000 comments in 1.5 ms, jsdom 31 1.1 ms;
+the same rules as jsdom 31 for runs of comments, `/***/` and `* /` inside).
+Copilot's closer look on 36b3fad (escaped at-keywords, escaped comment
+openers; reproduced on 31.0.1, 18 of 28 probes differed):
+- jsdom 31 reads an at-keyword's escapes, for every rule (`@\6d edia` is
+  `@media`, `@f\75nction` `@function`, `@prop\65rty` `@property`;
+  `@m\65dia` is no `@media`: `\65d` is one escape). warpdom read `[\w-]+`
+  only, so these were dropped (on main too, for the rules before G1b).
+  The 31 profile now reads the at-keyword with its escapes where records
+  are made (cssom.js `RAW_AT`, also for the newer rules' check); the older
+  profiles keep theirs (jsdom 30 drops them all).
+- A default's comments are dropped as an initial value's (`a/*b*/c` is
+  `ac`, `1/*b*/2` `12`), and an escape keeps a `/*` from opening one
+  (`\/* x */` is kept); the name and type are read with comments blanked
+  to their length, the default from the text as written. An @function's
+  result is read as written too (parse31.js: no property is named
+  result), so `result: a/*b*/c` is `ac`.
+- An unquoted url in an initial value, default or result has its escapes
+  read and is written again (`url(\61)` is `url(a)`, `url(\28)`
+  `url(\()`, `url(\9)` `url(\9 )`, `URL(` `url(`); @property's
+  initial-value had the same gap (on main too). The new regexes are
+  linear (50,000 escapes: 4 to 24 ms).
+Review round on b279580 (Copilot): a six-digit escape followed by
+another hex digit (`url(\000061bc.png)`, `@\00006dedia`) was refused by
+the escape pattern's lookahead, so the url was written empty; six digits
+are taken as they are now, the lookahead only for one to five (as
+rules31.js's `ESCAPE`).
+Review round on 24844e1 (both bots; reproduced on 31.0.1):
+- The CSS examples above are code spans (CodeRabbit: `*b*` read as
+  emphasis).
+- An at-rule's prelude is trimmed of CSS whitespace only in the 31
+  profile (cssTrim): U+00A0 is a token there, so
+  `@supports (color: red)  { }` and `@container` are dropped, as in
+  jsdom 31 (on main too). jsdom 31 also keeps a U+00A0 inside @media,
+  @layer and @import preludes' text: #358.
+- An escaped url name (`u\72l(`, `U\52L(`, `\75rl(`) is an unquoted url
+  in the @function prelude's scanner and in initial values (three name
+  characters read, so a long name is not read again at each u: 20,000
+  `u\72 ` in 9 ms, 6.5 s before). The sheet's splitter (shared by every
+  profile) still reads only `url(`, so such a rule is dropped: #358.
+- Copilot's closer look (large defaults): initialText31 read the last
+  character of the text it was building at each piece, which flattens
+  the string each time: quadratic (80,000 urls in a default: 2,090 ms,
+  jsdom 31 50 ms; on main too, for @property's initial-value). The last
+  character is kept apart now: 18 ms (320,000: 67 ms).
+Review round on d07514a (Copilot's closer look; reproduced on 31.0.1):
+- A default of comments only (`--a: /**/`) was taken as an empty one
+  since defaults are read as written (this branch's regression); jsdom
+  31 drops the rule, and so does warpdom again.
+- The 31 profile reads the at-keyword from the text as written, where a
+  comment ends it: `@med/**/ia` is no `@media` (dropped, as in jsdom 31;
+  warpdom read it after removing comments, on main too) and
+  `@media/**/print` is `@media print`. A comment between a media
+  prelude's parts is still nothing, not a space (`print/**/and` is
+  `printand`; on main too): #358.
+- Quadratic default parsing: not found. 14 shapes of prelude (many
+  parameters, long defaults with comments, urls, brackets, strings,
+  escapes, colons, long types) grow linearly from 10,000 to 40,000
+  (at most 37 ms); the quadratic one was initialText31's, fixed in
+  d07514a.
+
+Review round (#353, Copilot's summary on c8c0452: "insertRule accepts a
+qualified rule before a second declaration"). That is jsdom 31's
+behavior: an @function's insertRule reads its text as declarations
+first, so in `p {} --x: 1; --y: 2` the rule is junk up to the semicolon
+and `--y` goes in. The probe found a real gap next to it: an at-rule
+before the declarations (`@media print{} --x: 1`, `@layer a; --x: 1`) is
+dropped there and the declarations inserted, where warpdom threw. The
+declaration attempt now runs for text starting with `@` too, and takes
+the list when one item is a declaration; with none, the text is one
+rule as before. 0 of 40 probe shapes differ.
+
+Review round (#353, Copilot on 97edfb5): reading relative lengths as px
+for a typed default rebuilt the string once per length, so a
+`<length>+` default of 40,000 `1em` took 764 ms (10,000: 44 ms). The
+unchanged slices and `px` are now joined once: 24 ms at 10,000, 38 ms
+at 40,000. CodeRabbit: the round-2 CSS examples here are code spans.
+
+## 2026-11-27: Vitest VM pools: the window's timers, a closed window at teardown (branch fix/351-vm-timers, #351)
+
+Reported by an outside user (#351): in the VM pools (vmThreads,
+vmForks), callbacks that run after a file's teardown threw
+ReferenceError (window, performance, CustomEvent), and Vitest exited 1.
+The animation frame part was fixed on main by #255 (unreleased after
+0.1.14). The timer part reproduced on main: 12 to 13 errors from a
+library's setTimeout left over from the test.
+
+Black box, Vitest 5 with its jsdom environment (jsdom 30), VM pools:
+setTimeout is the window's (numeric ids, a string handler accepted, not
+Node's Timeout objects); after teardown the context keeps the window's
+members (window, document, CustomEvent and performance work), pending
+timers never run, and new ones get id 0 and never run.
+
+Decision: in the VM pools the timers are the window's (the host's are
+kept in forks and threads, as Vitest's jsdom environment keeps Node's
+there), and teardown stops them for good (closeWindowTimers: pending
+ones cleared, later ones 0). Teardown no longer deletes the window's
+members from the context: each file has its own context, dropped after
+it, so there is nothing to restore, and code still running after the
+file reads them as with jsdom. Jest already did both (numericTimers,
+CLOSED_WINDOW_UNDEFINED, as jest-environment-jsdom). Load and the hot
+members are untouched (timers in the VM pools only go through the
+window's bookkeeping, one Map entry per pending timer).
+
+Review round 1 (#355, both bots; reproduced in Vitest's VM pool with its
+jsdom environment): a timer handler's this is the global the test sees
+(the VM context's, globalProxy), a string handler runs as a script of
+the window where the environment runs scripts (runScript; the others
+keep ignoring it), a thrown error goes to the window's error event
+(reportError, as frame and microtask callbacks), and teardown also stops
+the timers of the windows nested in the window (iframes: jsdom's close
+does, black box 20.0.3 and 30.1.2). The error and receiver changes hold
+for every window's timers (frames, standalone windows), as in jsdom.
+
+Review round 2 (#355): a timer's handler (to a string) and timeout (to
+a number) are converted before the window's state is checked, as jsdom
+20 and 30 do (black box: a closed window still calls toString and
+valueOf, then returns 0), so a conversion that removes its iframe starts
+no timer. Not changed: a handler with its own apply property (apply =
+null) is called through it, and the TypeError reported, as jsdom 20 and
+30 do. The adapter test arms the timers teardown must stop after the
+awaited checks, with nothing awaited before teardown, and clears them
+in a finally block.
+Review round 3 (#355, Copilot): a Symbol handler throws a TypeError
+("Value is a symbol, which cannot be converted to a string."), open or
+closed window, as jsdom 20 and 30 do (black box).
+Review round 4 (#355, Copilot's summary): a BigInt timeout throws a
+TypeError ("Value is a BigInt which cannot be converted to a number."),
+open or closed window, as jsdom 30 does (black box); an object whose
+valueOf returns a BigInt is still converted, as in jsdom. Main already
+accepted a BigInt; not a regression of this branch.
 
 ## 2026-11-27: jsdom 31, part G2: the descriptor interfaces (branch feat/269-jsdom31-descriptors, #269)
 

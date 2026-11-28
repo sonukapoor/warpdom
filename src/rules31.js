@@ -33,6 +33,7 @@
 // valid one wins.
 import { parseDeclarationList31, parseValue31, serializeName31, serializeString31 as quote } from './parse31.js';
 import { decodeEscapes } from './conditions31.js';
+import { preprocessCss } from './internal.js';
 import { DARK_SYSTEM_COLORS_31 } from './colors.js';
 import {
   UNIVERSAL,
@@ -53,7 +54,9 @@ import {
 // U+FFFD), and the end closes what is open: a string left open is a
 // string, a \ at the end is nothing in a string and U+FFFD in a name
 // (#344 review).
-const ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F]|$)`;
+// (an escape takes all its hex digits, up to six: one way to read a name,
+// so a name with many escapes is not tried every way; #353 review)
+const ESCAPE = String.raw`\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:\r\n|[ \t\n\r\f])?|[^\n\r\f0-9a-fA-F]|$)`;
 const NAME_START = String.raw`[A-Za-z_\u0080-￿]`;
 const NAME_CHAR = String.raw`[\w\u0080-￿-]`;
 const IDENT = String.raw`(?:--|-?(?:${NAME_START}|${ESCAPE}))(?:${NAME_CHAR}|${ESCAPE})*`;
@@ -450,17 +453,26 @@ export function propertyRuleText(data) {
 // Its data: { name, params: [{ name, syntax, defaultValue (or null) }],
 // returns (a syntax) }, or null when it is dropped; names with their
 // escapes read (CSSFunctionRule.name, getParameters(); #353 review).
-const FUNCTION_NAME = new RegExp(String.raw`^(?:[ \t\n\r\f]|\/\*[\s\S]*?\*\/)*(${IDENT})\(`);
+// (a comment's body cannot hold its end, so a run of comments is read
+// one way only: linear, #353 review)
+const FUNCTION_NAME = new RegExp(String.raw`^(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*(${IDENT})\(`);
 const PARAMETER_NAME = new RegExp(String.raw`^${IDENT}`);
 const RETURNS = /^returns(?![\w\u0080-￿\\-])/i;
 const CSS_SPACE = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g;
 const cssTrim = (text) => text.replace(CSS_SPACE, '');
 // (comments as spaces, those in strings and unquoted urls kept: url(a/*b)
-// is one url; #353 review)
+// is one url, and none after an escape: \/* is no comment; #353 review)
+// (blank: a comment as spaces of its length, so the text's offsets hold)
 const COMMENT_OR_STRING =
-  /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|(\burl\([ \t\n\r\f]*(?!["'])(?:[^)\\]|\\[\s\S])*\)?)|\/\*[\s\S]*?(?:\*\/|$)/gi;
-const withoutComments = (text) =>
-  text.includes('/*') ? text.replace(COMMENT_OR_STRING, (m, string, url) => string ?? url ?? ' ') : text;
+  /("(?:[^"\\\n]|\\[\s\S])*"?|'(?:[^'\\\n]|\\[\s\S])*'?)|(\burl\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?)|(\\[\s\S])|\/\*[\s\S]*?(?:\*\/|$)/gi;
+const withoutComments = (text, blank = false) =>
+  text.includes('/*')
+    ? text.replace(
+        COMMENT_OR_STRING,
+        (m, string, url, escape) => string ?? url ?? escape ?? (blank ? ' '.repeat(m.length) : ' '),
+      )
+    : text;
+const LEADING_SPACE = /^[ \t\n\r\f]*/;
 
 const CLOSER = { '(': ')', '[': ']', '{': '}' };
 // The index of a comment's last character (its /), or the text's last.
@@ -471,12 +483,28 @@ function commentEnd(text, at) {
 // When an unquoted url starts at the index (url(a[b.png), CSS Syntax 3's
 // <url-token>: its contents are no brackets, comments or separators; #353
 // review), the index of its ), or the text's last; else -1.
-const URL_START = /url\([ \t\n\r\f]*(?!["'])/iy;
+// (the quote checked before the spaces are read: url( "a)b") is quoted)
+// (url's name with escapes too, u\72l( and \75rl(, as jsdom 31's tokenizer
+// reads it; three name characters, as url's, so a long name is not read
+// at each u in it; #353 review)
+const URL_START = /url\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*/iy;
+const URL_NAME = new RegExp(String.raw`(?:${NAME_CHAR}|${ESCAPE}){3}\(`, 'y');
+const URL_CONTENTS_START = /(?![ \t\n\r\f]*["'])[ \t\n\r\f]*/y;
 function unquotedUrlEnd(text, at) {
-  if ((text[at] !== 'u' && text[at] !== 'U') || /[\w\u0080-\uffff\\-]/.test(text[at - 1] ?? '')) return -1;
+  const c = text[at];
+  if ((c !== 'u' && c !== 'U' && c !== '\\') || /[\w\u0080-\uffff\\-]/.test(text[at - 1] ?? '')) return -1;
+  let start;
   URL_START.lastIndex = at;
-  if (!URL_START.test(text)) return -1;
-  for (let i = URL_START.lastIndex; i < text.length; i++) {
+  if (URL_START.test(text)) start = URL_START.lastIndex;
+  else {
+    URL_NAME.lastIndex = at;
+    const name = URL_NAME.exec(text);
+    if (name === null || !name[0].includes('\\') || !/^url\($/i.test(decodeEscapes(name[0]))) return -1;
+    URL_CONTENTS_START.lastIndex = at + name[0].length;
+    if (!URL_CONTENTS_START.test(text)) return -1;
+    start = URL_CONTENTS_START.lastIndex;
+  }
+  for (let i = start; i < text.length; i++) {
     if (text[i] === '\\') i++;
     else if (text[i] === ')') return i;
   }
@@ -493,8 +521,8 @@ function closingAt(text, from, commas = null) {
       i++;
       while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
     } else if (c === '/' && text[i + 1] === '*') i = commentEnd(text, i);
-    else if (c === '\\') i++;
     else if (unquotedUrlEnd(text, i) !== -1) i = unquotedUrlEnd(text, i);
+    else if (c === '\\') i++;
     else if (c === '(' || c === '[' || c === '{') stack.push(CLOSER[c]);
     else if (c === ')' || c === ']' || c === '}') {
       if (stack.length === 0) return c === ')' ? i : -1;
@@ -503,8 +531,8 @@ function closingAt(text, from, commas = null) {
   }
   return -1;
 }
-// Whether the text has a ! or a { } or ; outside brackets, strings and
-// comments.
+// Whether the text has a { or } outside strings and comments, or a ! or ;
+// outside brackets too (f(1; 2) is a value; #353 review).
 function topLevelStop(text) {
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
@@ -513,11 +541,11 @@ function topLevelStop(text) {
       i++;
       while (i < text.length && text[i] !== c) i += text[i] === '\\' ? 2 : 1;
     } else if (c === '/' && text[i + 1] === '*') i = commentEnd(text, i);
-    else if (c === '\\') i++;
     else if (unquotedUrlEnd(text, i) !== -1) i = unquotedUrlEnd(text, i);
+    else if (c === '\\') i++;
     else if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
-    else if (c === '{' || c === '}' || c === ';' || (c === '!' && depth === 0)) return true;
+    else if (c === '{' || c === '}' || ((c === ';' || c === '!') && depth === 0)) return true;
   }
   return false;
 }
@@ -540,8 +568,12 @@ function cssType(text) {
   return syntax !== null && syntax.parts.length === 1 ? syntax : null;
 }
 
+// (the name and type without comments, the default as written: its
+// comments dropped as an initial value's, a/*b*/c is ac; #353 review)
 function functionParameter(piece) {
-  const text = cssTrim(withoutComments(piece));
+  const blanked = withoutComments(piece, true);
+  const lead = LEADING_SPACE.exec(blanked)[0].length;
+  const text = blanked.slice(lead);
   const m = PARAMETER_NAME.exec(text);
   const name = m === null ? null : decodedName(m[0]);
   if (name === null || name === '--') return null;
@@ -551,15 +583,18 @@ function functionParameter(piece) {
   const syntax = typeText === '' ? UNIVERSAL : cssType(typeText);
   if (syntax === null) return null;
   if (colon === -1) return { name, syntax, defaultValue: null };
-  const raw = cssTrim(rest.slice(colon + 1));
+  const raw = cssTrim(piece.slice(lead + m[0].length + colon + 1));
   // (and a value: a bad url or string is none, url(a b); #353 review)
   if (raw === '' || topLevelStop(raw) || parseValue31(raw, true) === null) return null;
   const value = initialText31(raw, false);
-  if (syntax !== UNIVERSAL && !matchesSyntax31(syntax, value)) return null;
+  // (comments only are no default either: --a: /**/; #353 review)
+  if (value === '' || (syntax !== UNIVERSAL && !matchesSyntax31(syntax, value))) return null;
   return { name, syntax, defaultValue: value };
 }
 
-export function functionPrelude31(prelude) {
+// (preprocessed first: NUL is U+FFFD in names and defaults; #353 review)
+export function functionPrelude31(written) {
+  const prelude = preprocessCss(written);
   const m = FUNCTION_NAME.exec(prelude);
   const name = m === null ? null : decodedName(m[1]);
   if (name === null) return null;
@@ -570,9 +605,12 @@ export function functionPrelude31(prelude) {
   const inner = prelude.slice(m[0].length, close);
   if (cssTrim(withoutComments(inner)) !== '') {
     let from = m[0].length;
+    // (names in a set: a long list is read in linear time; #353 review)
+    const names = new Set();
     for (const end of [...commas, close]) {
       const param = functionParameter(prelude.slice(from, end));
-      if (param === null || params.some((p) => p.name === param.name)) return null;
+      if (param === null || names.has(param.name)) return null;
+      names.add(param.name);
       params.push(param);
       from = end + 1;
     }

@@ -112,6 +112,9 @@ const identText = (name) =>
   name[0] === '#' ? `#${escapeIdentifier(readEscapes(name.slice(1)))}` : escapeIdentifier(readEscapes(name));
 export function initialText31(text, keepComments) {
   let out = '';
+  // (the last character kept apart: reading it from out would flatten the
+  // string at each piece, quadratic for a long value; #353 review)
+  let last = '';
   let space = false;
   PIECE.lastIndex = 0;
   while (PIECE.lastIndex < text.length) {
@@ -123,18 +126,48 @@ export function initialText31(text, keepComments) {
     if (m[2] !== undefined && !keepComments) continue;
     let piece = m[0];
     if (m[3] !== undefined) piece = cssString(stringValue(piece));
-    // (url( a.png ) is url(a.png))
-    else if (m[4] !== undefined)
-      piece = `${piece.slice(0, 4)}${piece.slice(4).replace(/\)$/, '').replace(CSS_SPACE, '')})`;
+    // (url( a.png ) is url(a.png), URL( url()
+    else if (m[4] !== undefined) piece = `url(${urlText(piece)})`;
     // (a number, with its unit: 1E1PX is 10px; a1 is a name)
     // (its unit's escapes read: 2p\78 is 2px; #345 review)
     else if (m[5] !== undefined) piece = String(Number(m[5])) + unitText(m[6]);
     // (a name's escapes read and written as an identifier's: \61 bc is
     // abc, \31 abc stays; #345 review)
-    else if (m[7] !== undefined && piece.includes('\\')) piece = identText(piece);
-    if (space && out !== '' && !OPENS.has(out[out.length - 1]) && !CLOSES.has(piece)) out += ' ';
+    else if (m[7] !== undefined && piece.includes('\\')) {
+      // (an escaped url name, U\52L(a), is an unquoted url too, as jsdom
+      // 31's tokenizer reads it; #353 review)
+      URL_REST.lastIndex = PIECE.lastIndex;
+      const rest = /^url$/i.test(readEscapes(piece)) ? URL_REST.exec(text) : null;
+      if (rest === null) piece = identText(piece);
+      else {
+        piece = `url(${urlText(`url${rest[0]}`)})`;
+        PIECE.lastIndex = URL_REST.lastIndex;
+      }
+    }
+    if (space && out !== '' && !OPENS.has(last) && !CLOSES.has(piece)) out += ' ';
     space = false;
     out += piece;
+    last = piece[piece.length - 1];
+  }
+  return out;
+}
+// An unquoted url's contents as jsdom 31 writes them (black box, 31.0.1;
+// #353 review): its escapes read (url(\61) is url(a)), then a space, a
+// parenthesis, a quote and a backslash escaped, a control character as
+// its code point (url(\9) is url(\9 )); spaces around them dropped. A
+// hex escape is all its digits (six at most), and the one space after it
+// its own.
+const URL_CONTENTS =
+  /^[ \t\n\r\f]*((?:[^\\ \t\n\r\f)]|\\(?:(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:\r\n|[ \t\n\r\f])?|[^0-9a-fA-F]))*)/;
+const URL_REST = /\((?![ \t\n\r\f]*["'])[ \t\n\r\f]*(?:[^)\\]|\\[\s\S])*\)?/y;
+const URL_ESCAPED = new Set([' ', '(', ')', '"', "'", '\\']);
+function urlText(token) {
+  const read = readEscapes(URL_CONTENTS.exec(token.slice(4))[1]);
+  let out = '';
+  for (const c of read) {
+    const cp = c.codePointAt(0);
+    if (cp < 0x20 || cp === 0x7f) out += `\\${cp.toString(16)} `;
+    else out += URL_ESCAPED.has(c) ? `\\${c}` : c;
   }
   return out;
 }
@@ -480,10 +513,16 @@ const ANY_LENGTH = {
     if (tokens === null) return text;
     const at = [];
     relativeLengths(tokens, at);
-    let out = text;
-    for (let i = at.length - 1; i >= 0; i--)
-      out = `${out.slice(0, at[i].e - at[i].unit.length)}px${out.slice(at[i].e)}`;
-    return out;
+    // (the unchanged slices and px, in order, joined once; #353 review)
+    if (at.length === 0) return text;
+    const parts = [];
+    let from = 0;
+    for (const tok of at) {
+      parts.push(text.slice(from, tok.e - tok.unit.length), 'px');
+      from = tok.e;
+    }
+    parts.push(text.slice(from));
+    return parts.join('');
   },
 };
 // The dimension tokens of relative lengths, in order, in functions and
