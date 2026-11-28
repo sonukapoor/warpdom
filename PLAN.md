@@ -9757,8 +9757,12 @@ docs/stability.md and docs/jsdom-versions.md say 31.0.1; the last lists
 what is not yet modeled for 31.
 
 Not yet modeled (decided 2026-11-26, each its own PR later): relative
-colors (rgb(from ...)); math results clamped to the property's range;
-hypot() computed; trig, sign() and abs() simplified when declared (the
-F3c review notes). Not run for this change: the version corpus
+colors (`rgb(from ...)`); math results clamped to the property's range;
+trig functions and `hypot()` simplified when declared (`sin(0)` is
+`calc(0)`, `hypot(3px, 4px)` is `calc(5px)`); `abs()` and `sign()` of a
+relative length kept as written (jsdom 31 keeps `abs(-1em)`, warpdom
+writes `calc(1em)`); math in a number property computed (`opacity:
+abs(-0.5)` is `0.5`). Measured on 31.0.1 on 2026-11-28 after
+CodeRabbit's #359 review (the F3c list had abs() the wrong way round). Not run for this change: the version corpus
 (dom-api-tracer, mode versions) on jsdom 31; the next corpus timing run
 covers it.

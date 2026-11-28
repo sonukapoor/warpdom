@@ -11,8 +11,12 @@ marked 31.0.0 were measured on 31.0.1
 modeled for jsdom 31: relative colors (`rgb(from red r g b)`, which
 jsdom 31 computes as `color(srgb 1 0 0)`); a math result clamped to the
 property's range (`width: calc(-1px)` computes as `0px` in jsdom 31);
-`hypot()` in computed values; and trigonometric functions, `sign()` and
-`abs()` simplified in declared values.
+trigonometric functions and `hypot()` simplified in declared values
+(`sin(0)` is `calc(0)`, `hypot(3px, 4px)` is `calc(5px)` in jsdom 31;
+warpdom keeps them as written); `abs()` and `sign()` of a relative
+length kept as written (`abs(-1em)` in jsdom 31, where warpdom gives
+`calc(1em)`); and math in a number property computed (`opacity:
+abs(-0.5)` computes as `0.5` in jsdom 31, `calc(0.5)` in warpdom).
 
 Deliberate differences from jsdom are in
 [differences.md](differences.md).
