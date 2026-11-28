@@ -9463,3 +9463,57 @@ Review round 4 (#352, Copilot's summary): part's getter throws for a
 Text node (it has state, but is no element); the receiver test reads
 each result's type, so a token list made for one no longer passes as a
 TypeError from serializing it.
+
+## 2026-11-27: Vitest VM pools: the window's timers, a closed window at teardown (branch fix/351-vm-timers, #351)
+
+Reported by an outside user (#351): in the VM pools (vmThreads,
+vmForks), callbacks that run after a file's teardown threw
+ReferenceError (window, performance, CustomEvent), and Vitest exited 1.
+The animation frame part was fixed on main by #255 (unreleased after
+0.1.14). The timer part reproduced on main: 12 to 13 errors from a
+library's setTimeout left over from the test.
+
+Black box, Vitest 5 with its jsdom environment (jsdom 30), VM pools:
+setTimeout is the window's (numeric ids, a string handler accepted, not
+Node's Timeout objects); after teardown the context keeps the window's
+members (window, document, CustomEvent and performance work), pending
+timers never run, and new ones get id 0 and never run.
+
+Decision: in the VM pools the timers are the window's (the host's are
+kept in forks and threads, as Vitest's jsdom environment keeps Node's
+there), and teardown stops them for good (closeWindowTimers: pending
+ones cleared, later ones 0). Teardown no longer deletes the window's
+members from the context: each file has its own context, dropped after
+it, so there is nothing to restore, and code still running after the
+file reads them as with jsdom. Jest already did both (numericTimers,
+CLOSED_WINDOW_UNDEFINED, as jest-environment-jsdom). Load and the hot
+members are untouched (timers in the VM pools only go through the
+window's bookkeeping, one Map entry per pending timer).
+
+Review round 1 (#355, both bots; reproduced in Vitest's VM pool with its
+jsdom environment): a timer handler's this is the global the test sees
+(the VM context's, globalProxy), a string handler runs as a script of
+the window where the environment runs scripts (runScript; the others
+keep ignoring it), a thrown error goes to the window's error event
+(reportError, as frame and microtask callbacks), and teardown also stops
+the timers of the windows nested in the window (iframes: jsdom's close
+does, black box 20.0.3 and 30.1.2). The error and receiver changes hold
+for every window's timers (frames, standalone windows), as in jsdom.
+
+Review round 2 (#355): a timer's handler (to a string) and timeout (to
+a number) are converted before the window's state is checked, as jsdom
+20 and 30 do (black box: a closed window still calls toString and
+valueOf, then returns 0), so a conversion that removes its iframe starts
+no timer. Not changed: a handler with its own apply property (apply =
+null) is called through it, and the TypeError reported, as jsdom 20 and
+30 do. The adapter test arms the timers teardown must stop after the
+awaited checks, with nothing awaited before teardown, and clears them
+in a finally block.
+Review round 3 (#355, Copilot): a Symbol handler throws a TypeError
+("Value is a symbol, which cannot be converted to a string."), open or
+closed window, as jsdom 20 and 30 do (black box).
+Review round 4 (#355, Copilot's summary): a BigInt timeout throws a
+TypeError ("Value is a BigInt which cannot be converted to a number."),
+open or closed window, as jsdom 30 does (black box); an object whose
+valueOf returns a BigInt is still converted, as in jsdom. Main already
+accepted a BigInt; not a regression of this branch.
