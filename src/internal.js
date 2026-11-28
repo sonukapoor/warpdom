@@ -1240,3 +1240,14 @@ export const preprocessCss = (text) =>
   text.includes('\r') || text.includes('\f') || text.includes('\0')
     ? text.replace(/\r\n?|\f/g, '\n').replace(/\0/g, '\uFFFD')
     : text;
+// Where each character of preprocessCss(text) is in text (one more for
+// its end): a CR LF is one character there.
+export function preprocessMap(text) {
+  const map = [];
+  for (let i = 0; i < text.length; i++) {
+    map.push(i);
+    if (text[i] === '\r' && text[i + 1] === '\n') i++;
+  }
+  map.push(text.length);
+  return map;
+}
